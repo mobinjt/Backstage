@@ -1,0 +1,92 @@
+import BackstageCore
+import SwiftUI
+
+extension View {
+    /// Puts Backstage on the app's main view: the panel, the passphrase prompt, the performance
+    /// overlay and the server strip, shake and ⌃⌥⌘D to open. Nothing shows while Backstage is off.
+    /// Call `Backstage.shared.start(_:)` first.
+    public func backstage() -> some View {
+        modifier(BackstageHostModifier())
+    }
+
+    /// The hidden trigger: tapping this view `count` times in a row (each within two seconds of
+    /// the last) opens Backstage, or asks for the passphrase in a locked TestFlight build. App
+    /// Store builds ignore it.
+    public func backstageTrigger(count: Int = 7) -> some View {
+        modifier(BackstageTriggerModifier(count: count))
+    }
+}
+
+private struct BackstageHostModifier: ViewModifier {
+    @State private var backstage = Backstage.shared
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                if backstage.isEnabled {
+                    // ⌃⌥⌘D, on the Mac and on iPads with a keyboard.
+                    Button("Backstage") { backstage.open() }
+                        .keyboardShortcut("d", modifiers: [.control, .option, .command])
+                        .hidden()
+                        .accessibilityHidden(true)
+                }
+            }
+            #if os(iOS)
+            .background { BackstageWindowInstaller() }
+            #elseif os(macOS)
+            .overlay(alignment: .top) {
+                if backstage.isEnabled {
+                    ServerStrip()
+                }
+            }
+            .onChange(of: backstage.isPanelPresented || backstage.isAskingForPassphrase, initial: true) { _, isOpen in
+                if isOpen { BackstageWindows.shared.showPanel() }
+            }
+            .onChange(of: backstage.isEnabled && backstage.showsPerformanceOverlay, initial: true) { _, shows in
+                BackstageWindows.shared.setPerformanceOverlay(visible: shows)
+            }
+            #endif
+    }
+}
+
+private struct BackstageTriggerModifier: ViewModifier {
+    let count: Int
+    @State private var taps: [Date] = []
+
+    func body(content: Content) -> some View {
+        content
+            .contentShape(.rect)
+            .simultaneousGesture(TapGesture().onEnded {
+                let now = Date.now
+                // A pause of two seconds starts the count again.
+                taps = (taps.last.map { now.timeIntervalSince($0) < 2 } ?? false ? taps : []) + [now]
+                if taps.count >= count {
+                    taps = []
+                    Backstage.shared.trigger()
+                }
+            })
+    }
+}
+
+/// Shows which server the app uses when it isn't the app's own, so a build pointed at staging is
+/// never mistaken for the real thing.
+struct ServerStrip: View {
+    @State private var registry = Backstage.shared.registry
+
+    var body: some View {
+        let chosen = registry.serverSettings.compactMap { setting -> String? in
+            guard let url = Backstage.server(for: setting.key) else { return nil }
+            return setting.servers.first { $0.url == url }?.name ?? url.host() ?? url.absoluteString
+        }
+        if !chosen.isEmpty {
+            Text(chosen.joined(separator: " · "))
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(BackstageStyle.accent, in: .capsule)
+                .allowsHitTesting(false)
+                .accessibilityLabel("Server: \(chosen.joined(separator: ", "))")
+        }
+    }
+}
