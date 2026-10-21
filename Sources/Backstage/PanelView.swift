@@ -4,10 +4,24 @@ import SwiftUI
 /// The panel: network, logs, the app's settings and actions, storage and performance.
 struct PanelView: View {
     @State private var backstage = Backstage.shared
-    @AppStorage("Backstage.panelTab") private var tab = Tab.network
+    @AppStorage(Self.tabKey) private var tab = Tab.network
 
     enum Tab: String {
         case network, logs, app, storage, performance
+    }
+
+    private static let tabKey = "Backstage.panelTab"
+
+    /// Opens the panel on a tab, such as Logs when the performance overlay is tapped.
+    @MainActor
+    static func open(on tab: Tab) {
+        guard Backstage.shared.isEnabled else { return }
+        UserDefaults.standard.set(tab.rawValue, forKey: tabKey)
+        Backstage.shared.open()
+        #if os(macOS)
+        // The panel may be open already, behind other windows.
+        BackstageWindows.shared.showPanel()
+        #endif
     }
 
     var body: some View {

@@ -52,7 +52,8 @@ final class BackstageWindows: NSObject, NSWindowDelegate {
                 panel.backgroundColor = .clear
                 panel.hasShadow = true
                 panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-                panel.contentViewController = NSHostingController(rootView: PerformanceOverlayView())
+                // A click opens the Logs tab; dragging moves the panel.
+                panel.contentViewController = NSHostingController(rootView: PerformanceOverlayView().onTapGesture { PanelView.open(on: .logs) })
                 panel.setFrameAutosaveName("Backstage.performance")
                 if let screen = NSScreen.main, panel.frame.origin == .zero {
                     panel.setFrameOrigin(NSPoint(x: screen.visibleFrame.maxX - 240, y: screen.visibleFrame.maxY - 110))
