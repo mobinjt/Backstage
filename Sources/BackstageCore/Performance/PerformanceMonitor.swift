@@ -49,6 +49,27 @@ public final class PerformanceMonitor {
 
     public var latest: Sample? { samples.last }
 
+    /// The most frames a second the screen can show: 120 on ProMotion screens.
+    public static var screenMaximumFramesPerSecond: Int {
+        #if canImport(UIKit)
+        UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.screen.maximumFramesPerSecond }.max() ?? 60
+        #else
+        NSScreen.main?.maximumFramesPerSecond ?? 60
+        #endif
+    }
+
+    /// iOS holds iPhone apps to 60 fps on faster screens unless their Info.plist sets
+    /// `CADisableMinimumFrameDurationOnPhone`. iPads and Macs have no such limit.
+    public static var isHeldTo60FramesPerSecond: Bool {
+        #if canImport(UIKit)
+        UIDevice.current.userInterfaceIdiom == .phone
+            && screenMaximumFramesPerSecond > 60
+            && Bundle.main.object(forInfoDictionaryKey: "CADisableMinimumFrameDurationOnPhone") as? Bool != true
+        #else
+        false
+        #endif
+    }
+
     public func start() {
         guard !isRunning else { return }
         isRunning = true

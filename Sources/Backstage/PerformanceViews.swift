@@ -141,6 +141,14 @@ struct PerformanceView: View {
             } footer: {
                 Text("A small window above every screen with the frame rate, dropped frames, memory and CPU. It stays on across launches.")
             }
+            Section {
+                LabeledContent("Screen", value: "Up to \(PerformanceMonitor.screenMaximumFramesPerSecond) fps")
+            } footer: {
+                if PerformanceMonitor.isHeldTo60FramesPerSecond {
+                    Text("iOS holds this app to 60 fps on this iPhone. To allow up to \(PerformanceMonitor.screenMaximumFramesPerSecond), set CADisableMinimumFrameDurationOnPhone to YES in the app's Info.plist.")
+                        .foregroundStyle(.orange)
+                }
+            }
             if let latest = monitor.latest {
                 Section("Now") {
                     LabeledContent("Frame rate", value: String(format: "%.0f fps", latest.framesPerSecond))
