@@ -33,6 +33,7 @@ struct NetworkListView: View {
     }
 
     @State private var model = NetworkModel.shared
+    @State private var backstage = Backstage.shared
     @State private var search = ""
     @State private var kind = KindFilter.all
     /// Empty shows every status.
@@ -75,6 +76,21 @@ struct NetworkListView: View {
 
     var body: some View {
         List {
+            if backstage.showsUnlockNote {
+                Section {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundStyle(BackstageStyle.accent)
+                        Text("Recording started when you unlocked, so calls made earlier in this launch weren't kept. From the next launch on, everything is recorded from the start.")
+                            .font(.footnote)
+                        Spacer(minLength: 0)
+                        Button("Dismiss", systemImage: "xmark") { backstage.showsUnlockNote = false }
+                            .labelStyle(.iconOnly)
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
             Section {
                 Picker("Kind", selection: $kind) {
                     ForEach(KindFilter.allCases) { Text($0.rawValue).tag($0) }

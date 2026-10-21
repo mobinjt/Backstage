@@ -18,7 +18,7 @@ It's for the owner only:
 | Where the app runs | Backstage |
 |---|---|
 | Xcode (a Debug build, the simulator, or any build run from Xcode) | On from launch. Shake, ⌃⌥⌘D, or the hidden trigger opens it. |
-| TestFlight | Off and invisible. The hidden trigger asks for a passphrase; a device unlocked with it stays unlocked until **Lock**. Testers' devices record nothing. |
+| TestFlight | Off and invisible. The hidden trigger asks for a passphrase; a device unlocked with it stays unlocked until **Lock**. Recording starts when you unlock (the Network tab says so), and from the next launch on it starts at launch. Testers' devices record nothing. |
 | App Store | Off. Nothing is recorded and nothing opens it. |
 
 TestFlight and App Store builds are the same binary, so Backstage decides when the app runs: it

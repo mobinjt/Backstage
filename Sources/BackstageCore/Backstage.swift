@@ -42,6 +42,9 @@ public final class Backstage {
     public var isPanelPresented = false
     /// The passphrase prompt is open (TestFlight, before unlocking).
     public var isAskingForPassphrase = false
+    /// This device was unlocked during this launch, so recording began then rather than at
+    /// launch. The panel says so until the note is dismissed.
+    public var showsUnlockNote = false
 
     /// What the app added: servers, information, actions and switches.
     public let registry = Registry()
@@ -162,6 +165,9 @@ public final class Backstage {
         unlockStore.setUnlocked(true)
         isUnlocked = true
         isAskingForPassphrase = false
+        if !NetworkRecorder.shared.isRecording {
+            showsUnlockNote = true
+        }
         turnOn()
         return true
     }
