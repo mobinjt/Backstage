@@ -87,8 +87,9 @@ tap Version seven times, shake, or press ⌃⌥⌘D. Its TestFlight passphrase i
   (`NetworkRecorder.shared.openConnection(kind:url:headers:note:)`) show with their messages;
   the recording protocol itself leaves WebSocket tasks alone. A redirect shows as its own call,
   followed by the one it led to.
-- **Logs.** This launch's `Logger` messages, read with `OSLogStore`, filtered by level and
-  category.
+- **Logs.** This launch's `Logger` and `NSLog` messages, read with `OSLogStore`, filtered by level
+  and category. Only the app's own code is shown (its executable, the packages linked into it and
+  its frameworks) unless **App's Messages Only** is turned off to see the system's messages too.
 - **App.** Where it runs, the build, the device, and what the app registers through
   `Backstage.shared.registry`:
   - `addServers(key:servers:)`: a server switch. The app reads the choice with

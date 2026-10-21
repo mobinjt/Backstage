@@ -51,7 +51,7 @@ extension NetworkTransaction {
 
     var statusText: String {
         if let errorDescription, statusCode == nil { return errorDescription }
-        if let statusCode { return "\(statusCode) \(HTTPURLResponse.localizedString(forStatusCode: statusCode).capitalized)" }
+        if let statusCode { return Self.reasonPhrase(forStatusCode: statusCode).map { "\(statusCode) \($0)" } ?? "\(statusCode)" }
         return isComplete ? "Closed" : "Open"
     }
 }

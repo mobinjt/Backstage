@@ -74,7 +74,7 @@ public enum NetworkExport {
                     "request": request,
                     "response": [
                         "status": transaction.statusCode ?? 0,
-                        "statusText": transaction.statusCode.map { HTTPURLResponse.localizedString(forStatusCode: $0) } ?? "",
+                        "statusText": transaction.statusCode.flatMap(NetworkTransaction.reasonPhrase(forStatusCode:)) ?? "",
                         "httpVersion": "HTTP/1.1",
                         "headers": headers(transaction.responseHeaders),
                         "cookies": [],

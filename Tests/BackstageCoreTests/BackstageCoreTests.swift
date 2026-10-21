@@ -146,9 +146,29 @@ struct ExportTests {
         let log = try #require(har["log"] as? [String: Any])
         let entry = try #require((log["entries"] as? [[String: Any]])?.first)
         #expect((entry["response"] as? [String: Any])?["status"] as? Int == 201)
+        #expect((entry["response"] as? [String: Any])?["statusText"] as? String == "Created")
         #expect((entry["time"] as? Double) == 250)
         let headers = try #require((entry["request"] as? [String: Any])?["headers"] as? [[String: String]])
         #expect(headers.contains { $0["name"] == "Authorization" && $0["value"] == "<hidden>" })
+    }
+}
+
+struct StatusAndLogTests {
+    @Test func statusCodesUseTheStandardWording() {
+        #expect(NetworkTransaction.reasonPhrase(forStatusCode: 200) == "OK")
+        #expect(NetworkTransaction.reasonPhrase(forStatusCode: 307) == "Temporary Redirect")
+        #expect(NetworkTransaction.reasonPhrase(forStatusCode: 429) == "Too Many Requests")
+        #expect(NetworkTransaction.reasonPhrase(forStatusCode: 299) == nil)
+    }
+
+    @Test func onlyTheAppsOwnCodeCountsAsTheApp() {
+        let app: Set<String> = ["GameHub", "GameHub.debug.dylib", "Purchases"]
+        #expect(LogReader.isFromApp(sender: "GameHub.debug.dylib", subsystem: "com.mobinjt.gamehub", appImages: app))
+        #expect(LogReader.isFromApp(sender: "Purchases", subsystem: "com.revenuecat", appImages: app), "An embedded framework")
+        #expect(LogReader.isFromApp(sender: "Foundation", subsystem: "", appImages: app), "NSLog")
+        #expect(!LogReader.isFromApp(sender: "UIKitCore", subsystem: "com.apple.UIKit", appImages: app))
+        #expect(!LogReader.isFromApp(sender: "Security", subsystem: "", appImages: app))
+        #expect(!LogReader.isFromApp(sender: "Foundation", subsystem: "com.apple.foundation", appImages: app))
     }
 }
 
