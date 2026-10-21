@@ -17,8 +17,12 @@ enum BackstageStyle {
         }
     }
 
+    /// "509 bytes", "8 KB"; zero is "0 bytes", not "Zero KB".
     static func bytes(_ count: Int) -> String {
-        ByteCountFormatter.string(fromByteCount: Int64(count), countStyle: .file)
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        formatter.allowsNonnumericFormatting = false
+        return formatter.string(fromByteCount: Int64(count))
     }
 
     static func duration(_ seconds: TimeInterval?) -> String {
