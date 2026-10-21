@@ -12,10 +12,10 @@ public enum RunEnvironment: String, Sendable, Codable {
     /// The App Store, or anything that couldn't be told apart from it: always off.
     case appStore
 
-    /// Asks StoreKit where the app came from. Debug builds and the simulator don't need to ask;
-    /// a failure counts as the App Store, so Backstage stays off when unsure.
+    /// Asks StoreKit where the app came from. Builds installed from Xcode don't need to ask; a
+    /// failure counts as the App Store, so Backstage stays off when unsure.
     static func detect() async -> RunEnvironment {
-        if isDebugBuild { return .xcode }
+        if isFromXcode { return .xcode }
         do {
             let transaction = try await AppTransaction.shared
             switch transaction.unsafePayloadValue.environment {
@@ -28,12 +28,43 @@ public enum RunEnvironment: String, Sendable, Codable {
         }
     }
 
+    /// A Debug build, the simulator, or a development-signed build, which only Xcode installs.
+    /// A Release build run from Xcode on a device is the last kind: StoreKit doesn't call it
+    /// `.xcode`.
+    static let isFromXcode = isDebugBuild || isDevelopmentSigned
+
     static var isDebugBuild: Bool {
         #if DEBUG || targetEnvironment(simulator)
         true
         #else
         false
         #endif
+    }
+
+    /// The app's provisioning profile lets a debugger attach (`get-task-allow`), which only
+    /// development profiles do. App Store and TestFlight builds carry no profile, and ad hoc and
+    /// enterprise profiles don't allow it.
+    static var isDevelopmentSigned: Bool {
+        #if os(macOS)
+        let url = Bundle.main.bundleURL.appending(path: "Contents/embedded.provisionprofile")
+        #else
+        let url = Bundle.main.bundleURL.appending(path: "embedded.mobileprovision")
+        #endif
+        guard let data = try? Data(contentsOf: url) else { return false }
+        return allowsDebugging(provisioningProfile: data)
+    }
+
+    /// Reads `get-task-allow` from a provisioning profile: a signed message with the profile's
+    /// property list inside, which is found by its XML markers rather than by checking the
+    /// signature. Only the app's own bundle is read, so the signature was checked at install.
+    static func allowsDebugging(provisioningProfile data: Data) -> Bool {
+        guard
+            let start = data.firstRange(of: Data("<?xml".utf8)),
+            let end = data.firstRange(of: Data("</plist>".utf8), in: start.lowerBound..<data.endIndex),
+            let plist = try? PropertyListSerialization.propertyList(from: data[start.lowerBound..<end.upperBound], format: nil) as? [String: Any],
+            let entitlements = plist["Entitlements"] as? [String: Any]
+        else { return false }
+        return entitlements["get-task-allow"] as? Bool ?? false
     }
 }
 

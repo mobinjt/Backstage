@@ -72,10 +72,11 @@ public final class Backstage {
         }
     }
 
-    /// Whether to act on Backstage's settings at launch, before StoreKit has answered: Debug
-    /// builds, and devices unlocked earlier. Apps read the chosen server through this.
+    /// Whether to act on Backstage's settings at launch, before StoreKit has answered: builds
+    /// installed from Xcode, and devices unlocked earlier. Apps read the chosen server through
+    /// this.
     public nonisolated static var isEnabledAtLaunch: Bool {
-        RunEnvironment.isDebugBuild || UnlockStore.standard.isUnlocked
+        RunEnvironment.isFromXcode || UnlockStore.standard.isUnlocked
     }
 
     /// Whether Backstage's settings apply right now, from any thread.

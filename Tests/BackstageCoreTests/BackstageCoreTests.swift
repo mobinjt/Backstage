@@ -35,6 +35,20 @@ struct PassphraseTests {
         #expect(Backstage.isEnabled(environment: .testFlight, isUnlocked: true))
         #expect(!Backstage.isEnabled(environment: .appStore, isUnlocked: true), "An unlocked flag never turns on an App Store build")
     }
+
+    @Test func onlyDevelopmentProfilesCountAsXcode() {
+        func profile(getTaskAllow: Bool?) -> Data {
+            var entitlements: [String: Any] = ["application-identifier": "TEAM.com.example.app"]
+            entitlements["get-task-allow"] = getTaskAllow
+            let plist = try! PropertyListSerialization.data(fromPropertyList: ["Entitlements": entitlements], format: .xml, options: 0)
+            // The property list sits between binary signature bytes, as in a real profile.
+            return Data([0x30, 0x80, 0x06, 0x09]) + plist + Data([0xA0, 0x82, 0x0B, 0x00])
+        }
+        #expect(RunEnvironment.allowsDebugging(provisioningProfile: profile(getTaskAllow: true)))
+        #expect(!RunEnvironment.allowsDebugging(provisioningProfile: profile(getTaskAllow: false)), "Ad hoc and enterprise")
+        #expect(!RunEnvironment.allowsDebugging(provisioningProfile: profile(getTaskAllow: nil)))
+        #expect(!RunEnvironment.allowsDebugging(provisioningProfile: Data("not a profile".utf8)))
+    }
 }
 
 struct NetworkRecorderTests {
