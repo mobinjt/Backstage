@@ -51,8 +51,16 @@ public final class RecordingURLProtocol: URLProtocol, @unchecked Sendable {
     override public class func canInit(with request: URLRequest) -> Bool {
         guard NetworkRecorder.shared.isRecording,
               let scheme = request.url?.scheme?.lowercased(), scheme == "http" || scheme == "https",
+              request.value(forHTTPHeaderField: "Upgrade")?.lowercased() != "websocket",
               property(forKey: handledKey, in: request) == nil else { return false }
         return true
+    }
+
+    /// WebSocket tasks are left alone: their handshake arrives as an `https` request, and sending
+    /// it on as a plain request would break the socket.
+    override public class func canInit(with task: URLSessionTask) -> Bool {
+        guard !(task is URLSessionWebSocketTask), let request = task.currentRequest else { return false }
+        return canInit(with: request)
     }
 
     override public class func canonicalRequest(for request: URLRequest) -> URLRequest {
@@ -133,8 +141,14 @@ public final class RecordingURLProtocol: URLProtocol, @unchecked Sendable {
     fileprivate func wasRedirected(to request: URLRequest, by response: HTTPURLResponse) {
         // Recorded as its own transaction; the app's session follows the redirect with a new
         // request, which this protocol records again.
+        loading.withLock { $0?.response = response }
         finish(error: nil, redirectedTo: request.url)
-        onClientThread { [self] in client?.urlProtocol(self, wasRedirectedTo: request, redirectResponse: response) }
+        // The new request carries the mark that this one was sent on already; without it, it's
+        // recorded like any other.
+        let mutable = (request as NSURLRequest).mutableCopy() as! NSMutableURLRequest
+        URLProtocol.removeProperty(forKey: Self.handledKey, in: mutable)
+        let next = mutable as URLRequest
+        onClientThread { [self] in client?.urlProtocol(self, wasRedirectedTo: next, redirectResponse: response) }
     }
 
     fileprivate func didComplete(with error: (any Error)?) {

@@ -152,7 +152,8 @@ struct ExportTests {
     }
 }
 
-/// Answers every request with a fixed response and remembers the request it saw.
+/// Answers every request with a fixed response and remembers the request it saw. `/old` is
+/// redirected to `/v1/ping`.
 final class StubProtocol: URLProtocol, @unchecked Sendable {
     static let seen = Mutex<[URLRequest]>([])
 
@@ -161,6 +162,15 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
 
     override func startLoading() {
         Self.seen.withLock { $0.append(request) }
+        if request.url?.path() == "/old" {
+            // Like the system, the new request is the old one with another URL, properties and all.
+            var next = request
+            next.url = URL(string: "https://example.com/v1/ping")!
+            let response = HTTPURLResponse(url: request.url!, statusCode: 302, httpVersion: "HTTP/1.1", headerFields: ["Location": next.url!.absoluteString])!
+            client?.urlProtocol(self, wasRedirectedTo: next, redirectResponse: response)
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
         let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(#"{"pong":true}"#.utf8))
@@ -201,6 +211,38 @@ struct RecordingURLProtocolTests {
         #expect(recorded.responseBody?.data == data)
         #expect(recorded.requestHeaders["X-App-Build"] == "ios 42")
         #expect(recorded.isComplete)
+    }
+
+    @Test func redirectsAreRecordedWithTheirStatus() async throws {
+        let forwarding = URLSessionConfiguration.ephemeral
+        forwarding.protocolClasses = [StubProtocol.self]
+        RecordingURLProtocol.forwardingConfiguration = forwarding
+        RecordingURLProtocol.resetForwarder()
+        NetworkRecorder.shared.setRecording(true, purge: true)
+        defer { NetworkRecorder.shared.setRecording(false, purge: true) }
+
+        let configuration = URLSessionConfiguration.ephemeral
+        Backstage.record(configuration)
+        let (data, response) = try await URLSession(configuration: configuration).data(from: URL(string: "https://example.com/old")!)
+
+        #expect(String(decoding: data, as: UTF8.self) == #"{"pong":true}"#)
+        #expect(response.url?.path() == "/v1/ping")
+        let recorded = NetworkRecorder.shared.transactions
+        #expect(recorded.map { $0.url?.path() } == ["/v1/ping", "/old"], "The redirect and the request it led to, newest first")
+        #expect(recorded.last?.statusCode == 302)
+        #expect(recorded.last?.note == "Redirected to https://example.com/v1/ping")
+        #expect(recorded.first?.statusCode == 200)
+    }
+
+    @Test func webSocketsAreLeftAlone() {
+        NetworkRecorder.shared.setRecording(true, purge: true)
+        defer { NetworkRecorder.shared.setRecording(false, purge: true) }
+        let configuration = URLSessionConfiguration.ephemeral
+        Backstage.record(configuration)
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        #expect(RecordingURLProtocol.canInit(with: session.dataTask(with: URL(string: "https://example.com/socket")!)))
+        #expect(!RecordingURLProtocol.canInit(with: session.webSocketTask(with: URL(string: "wss://example.com/socket")!)))
     }
 
     @Test func nothingIsTouchedWhileOff() async throws {

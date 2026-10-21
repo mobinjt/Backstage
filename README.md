@@ -3,6 +3,16 @@
 An in-app debug panel for the owner's apps: every network call the app makes, its logs, a server
 switch, the app's own actions and switches, its storage, and a performance overlay.
 
+<p align="center">
+  <img src="docs/demo.gif" width="300" alt="The example app sends requests, opens Backstage with the hidden trigger, shows a request's JSON, then turns on the performance overlay">
+</p>
+
+| Network | Request | Response |
+|---|---|---|
+| <img src="docs/network.png" width="250" alt="The Network tab"> | <img src="docs/request.png" width="250" alt="A request with its Authorization header hidden"> | <img src="docs/response.png" width="250" alt="A JSON response body"> |
+| **Logs** | **App** | **Performance overlay** |
+| <img src="docs/logs.png" width="250" alt="The Logs tab"> | <img src="docs/app.png" width="250" alt="The App tab with a server switch, switches and actions"> | <img src="docs/overlay.png" width="250" alt="The performance overlay above the app"> |
+
 It's for the owner only:
 
 | Where the app runs | Backstage |
@@ -14,6 +24,17 @@ It's for the owner only:
 TestFlight and App Store builds are the same binary, so Backstage decides when the app runs: it
 asks StoreKit's `AppTransaction` (`.xcode`, `.sandbox` for TestFlight, `.production`). Anything
 it can't tell counts as the App Store.
+
+## Trying it
+
+`Example/BackstageExample.xcodeproj` is a small app that uses everything: requests to public
+test servers (JSON, an image, a redirect, a 404, a 500, a slow one, one that fails), a WebSocket
+to an echo server, a made-up Nearby connection, a server switch, switches, actions, a few
+UserDefaults values and a Keychain item, and a button that freezes the main thread. It uses this
+checkout of the package, so changes show up at once.
+
+Open it in Xcode and run it on a simulator or a Mac. It's a Debug build, so Backstage is on:
+tap Version seven times, shake, or press ⌃⌥⌘D. Its TestFlight passphrase is `backstage-example`.
 
 ## Adding it to an app
 
@@ -63,7 +84,9 @@ it can't tell counts as the App Store.
   with search and filters, pretty JSON, copy as cURL, and export as HAR or JSON. `Authorization`,
   cookies and API keys stay hidden until tapped and are left out of exports. The last 1,000 calls
   are kept across launches in the app's Caches. WebSockets and other connections the app reports
-  (`NetworkRecorder.shared.openConnection(kind:url:headers:note:)`) show with their messages.
+  (`NetworkRecorder.shared.openConnection(kind:url:headers:note:)`) show with their messages;
+  the recording protocol itself leaves WebSocket tasks alone. A redirect shows as its own call,
+  followed by the one it led to.
 - **Logs.** This launch's `Logger` messages, read with `OSLogStore`, filtered by level and
   category.
 - **App.** Where it runs, the build, the device, and what the app registers through
@@ -91,7 +114,8 @@ it can't tell counts as the App Store.
   exports it.
 
 `swift test` runs the core's tests: when it's on, the passphrase, recording limits, files across
-launches, export, and a request recorded through the protocol.
+launches, export, and requests recorded through the protocol (redirects included, WebSockets left
+alone).
 
 ## License
 

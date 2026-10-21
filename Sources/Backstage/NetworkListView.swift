@@ -13,9 +13,11 @@ final class NetworkModel {
 
     func watch() {
         guard watching == nil else { return }
+        // Listening before reading, so nothing recorded in between is missed.
+        let changes = NetworkRecorder.shared.changes()
         transactions = NetworkRecorder.shared.transactions
         watching = Task { [weak self] in
-            for await _ in NetworkRecorder.shared.changes() {
+            for await _ in changes {
                 // At most a few refreshes a second, however busy the network is.
                 try? await Task.sleep(for: .milliseconds(250))
                 self?.transactions = NetworkRecorder.shared.transactions
