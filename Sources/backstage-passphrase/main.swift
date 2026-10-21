@@ -8,8 +8,8 @@ guard let entered = getpass("Passphrase for TestFlight builds: "), !String(cStri
     exit(1)
 }
 let passphrase = String(cString: entered)
-if passphrase.count < 12 {
-    print("Use at least 12 characters: the hash ships in the app, so a short passphrase can be guessed.")
+if passphrase.count < 8 {
+    print("Use at least 8 characters: the hash ships in the app, so a short passphrase can be guessed.")
     exit(1)
 }
 let salt = Passphrase.makeSalt()

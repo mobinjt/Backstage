@@ -21,7 +21,7 @@ it can't tell counts as the App Store.
    the app target. For Xcode Cloud, give it access to this repository once (App Store Connect >
    Xcode Cloud > Settings > Repositories).
 2. Make a passphrase hash: `swift run backstage-passphrase` in this repository. It asks for the
-   passphrase (12 characters or more) without showing it and prints the salt and hash. Only
+   passphrase (8 characters or more; mix letters, digits and symbols) without showing it and prints the salt and hash. Only
    those go in the app. The hash is PBKDF2-HMAC-SHA256 with 600,000 rounds, so someone who finds
    it in the app can only test a few guesses a second; a long passphrase keeps it out of reach.
 3. Start it first thing at launch, before anything makes a network session:
