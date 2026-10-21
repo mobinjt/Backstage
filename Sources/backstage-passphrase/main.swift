@@ -1,7 +1,7 @@
 import BackstageCore
 import Foundation
 
-// Asks for a passphrase without showing it and prints the salt and hash for
+// Asks for a passphrase without showing it and prints the salt and PBKDF2 hash for
 // `BackstageConfiguration`. The passphrase itself is never printed or stored.
 guard let entered = getpass("Passphrase for TestFlight builds: "), !String(cString: entered).isEmpty else {
     print("No passphrase given.")

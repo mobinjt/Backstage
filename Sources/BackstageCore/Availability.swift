@@ -1,4 +1,4 @@
-import CryptoKit
+import CommonCrypto
 import Foundation
 import Security
 import StoreKit
@@ -38,28 +38,63 @@ public enum RunEnvironment: String, Sendable, Codable {
 }
 
 /// The passphrase that unlocks Backstage in TestFlight builds, and the flag that keeps a device
-/// unlocked. The app's configuration holds only a salted hash; `swift run backstage-passphrase`
-/// makes one.
+/// unlocked. The app's configuration holds only a salt and a hash; `swift run backstage-passphrase`
+/// makes them.
+///
+/// The hash is PBKDF2 with HMAC-SHA256 and many rounds, so someone who takes the app apart and
+/// finds it can only try a few guesses a second per core, not billions. It's written as
+/// `pbkdf2-sha256$<rounds>$<hex>`, so the rounds can grow later without breaking older hashes.
 public enum Passphrase {
-    /// The hex SHA-256 of the salt followed by the passphrase.
-    public static func hash(_ passphrase: String, salt: String) -> String {
-        let digest = SHA256.hash(data: Data((salt + passphrase).utf8))
-        return digest.map { String(format: "%02x", $0) }.joined()
+    /// OWASP's recommendation for PBKDF2-HMAC-SHA256: about half a second to check on a phone.
+    public static let defaultRounds = 600_000
+
+    private static let scheme = "pbkdf2-sha256"
+
+    public static func hash(_ passphrase: String, salt: String, rounds: Int = defaultRounds) -> String {
+        "\(scheme)$\(rounds)$" + hex(derive(passphrase, salt: salt, rounds: rounds))
     }
 
     /// A random salt of 16 bytes, as hex.
     public static func makeSalt() -> String {
         var bytes = [UInt8](repeating: 0, count: 16)
         _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        return bytes.map { String(format: "%02x", $0) }.joined()
+        return hex(bytes)
     }
 
-    /// Compares in constant time, so the time taken doesn't hint at how much of a guess matched.
-    static func matches(_ passphrase: String, salt: String, hash expected: String) -> Bool {
-        let actual = Array(hash(passphrase, salt: salt).utf8)
-        let expected = Array(expected.lowercased().utf8)
+    /// Checks a guess against a stored hash, comparing in constant time so the time taken doesn't
+    /// hint at how much of a guess matched. Anything not in the expected form never matches.
+    static func matches(_ passphrase: String, salt: String, hash stored: String) -> Bool {
+        let parts = stored.lowercased().split(separator: "$")
+        guard parts.count == 3, parts[0] == scheme, let rounds = Int(parts[1]), rounds > 0 else { return false }
+        let actual = Array(hex(derive(passphrase, salt: salt, rounds: rounds)).utf8)
+        let expected = Array(parts[2].utf8)
         guard actual.count == expected.count else { return false }
         return zip(actual, expected).reduce(0) { $0 | ($1.0 ^ $1.1) } == 0
+    }
+
+    private static func derive(_ passphrase: String, salt: String, rounds: Int) -> [UInt8] {
+        let password = Array(passphrase.utf8)
+        let saltBytes = Array(salt.utf8)
+        var derived = [UInt8](repeating: 0, count: 32)
+        let status = password.withUnsafeBufferPointer { password in
+            saltBytes.withUnsafeBufferPointer { salt in
+                password.withMemoryRebound(to: CChar.self) { password in
+                    CCKeyDerivationPBKDF(
+                        CCPBKDFAlgorithm(kCCPBKDF2),
+                        password.baseAddress, password.count,
+                        salt.baseAddress, salt.count,
+                        CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256),
+                        UInt32(clamping: rounds),
+                        &derived, derived.count
+                    )
+                }
+            }
+        }
+        return status == kCCSuccess ? derived : []
+    }
+
+    private static func hex(_ bytes: [UInt8]) -> String {
+        bytes.map { String(format: "%02x", $0) }.joined()
     }
 }
 

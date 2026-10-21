@@ -148,11 +148,17 @@ public final class Backstage {
         }
     }
 
-    /// Unlocks this device when the passphrase matches. Recording starts at once.
+    /// Unlocks this device when the passphrase matches. Recording starts at once. Checking takes
+    /// about half a second, off the main thread.
     @discardableResult
-    public func unlock(passphrase: String) -> Bool {
-        guard environment == .testFlight || environment == .xcode, let configuration,
-              Passphrase.matches(passphrase, salt: configuration.passphraseSalt, hash: configuration.passphraseHash) else { return false }
+    public func unlock(passphrase: String) async -> Bool {
+        guard environment == .testFlight || environment == .xcode, let configuration else { return false }
+        let salt = configuration.passphraseSalt
+        let hash = configuration.passphraseHash
+        let matches = await Task.detached(priority: .userInitiated) {
+            Passphrase.matches(passphrase, salt: salt, hash: hash)
+        }.value
+        guard matches else { return false }
         unlockStore.setUnlocked(true)
         isUnlocked = true
         isAskingForPassphrase = false

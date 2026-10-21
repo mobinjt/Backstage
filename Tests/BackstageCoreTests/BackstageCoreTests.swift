@@ -6,12 +6,27 @@ import Testing
 struct PassphraseTests {
     @Test func theRightPassphraseMatchesOnlyWithItsSalt() {
         let salt = Passphrase.makeSalt()
-        let hash = Passphrase.hash("correct horse battery", salt: salt)
-        #expect(hash.count == 64)
+        // Few rounds keep the test fast; the rounds are read from the hash.
+        let hash = Passphrase.hash("correct horse battery", salt: salt, rounds: 1_000)
+        #expect(hash.hasPrefix("pbkdf2-sha256$1000$"))
+        #expect(hash.count == "pbkdf2-sha256$1000$".count + 64)
         #expect(Passphrase.matches("correct horse battery", salt: salt, hash: hash))
         #expect(Passphrase.matches("correct horse battery", salt: salt, hash: hash.uppercased()))
         #expect(!Passphrase.matches("correct horse batter", salt: salt, hash: hash))
         #expect(!Passphrase.matches("correct horse battery", salt: Passphrase.makeSalt(), hash: hash))
+    }
+
+    @Test func pbkdf2MatchesAKnownVector() {
+        // RFC 7914 section 11: PBKDF2-HMAC-SHA256, password "passwd", salt "salt", 1 round
+        // (the first 32 bytes of its 64-byte result).
+        #expect(Passphrase.hash("passwd", salt: "salt", rounds: 1) == "pbkdf2-sha256$1$55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc")
+    }
+
+    @Test func blankOrOtherHashesNeverMatch() {
+        let digest = String(repeating: "0", count: 64)
+        #expect(!Passphrase.matches("", salt: "", hash: ""))
+        #expect(!Passphrase.matches("anything", salt: "salt", hash: digest), "A bare SHA-256 hash isn't accepted")
+        #expect(!Passphrase.matches("anything", salt: "salt", hash: "pbkdf2-sha256$0$\(digest)"))
     }
 
     @Test func onlyXcodeAndUnlockedTestFlightBuildsAreOn() {

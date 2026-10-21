@@ -67,8 +67,16 @@ struct PassphraseView: View {
                     }
                 }
                 Section {
-                    Button("Unlock", action: unlock)
-                        .disabled(passphrase.isEmpty || isWaiting)
+                    Button(action: unlock) {
+                        HStack {
+                            Text("Unlock")
+                            if isWaiting && failures == 0 {
+                                Spacer()
+                                ProgressView().controlSize(.small)
+                            }
+                        }
+                    }
+                    .disabled(passphrase.isEmpty || isWaiting)
                 }
             }
             .formStyle(.grouped)
@@ -87,15 +95,16 @@ struct PassphraseView: View {
 
     private func unlock() {
         guard !passphrase.isEmpty, !isWaiting else { return }
-        if backstage.unlock(passphrase: passphrase) {
-            backstage.isPanelPresented = true
-            return
-        }
-        // Each wrong guess waits longer.
-        failures += 1
-        passphrase = ""
         isWaiting = true
         Task {
+            if await backstage.unlock(passphrase: passphrase) {
+                isWaiting = false
+                backstage.isPanelPresented = true
+                return
+            }
+            // Each wrong guess waits longer.
+            failures += 1
+            passphrase = ""
             try? await Task.sleep(for: .seconds(min(Double(failures * failures), 30)))
             isWaiting = false
             isFocused = true
