@@ -76,8 +76,10 @@ public final class RecordingURLProtocol: URLProtocol, @unchecked Sendable {
         var forwarded = request
         let body = Self.body(of: request)
         if let body {
-            forwarded.httpBody = body
+            // A request keeps one body: setting the stream, even to nil, clears `httpBody`, so the
+            // stream goes first.
             forwarded.httpBodyStream = nil
+            forwarded.httpBody = body
         }
         let mutable = (forwarded as NSURLRequest).mutableCopy() as! NSMutableURLRequest
         URLProtocol.setProperty(true, forKey: Self.handledKey, in: mutable)
