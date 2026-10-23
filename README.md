@@ -122,6 +122,17 @@ tap Version seven times, shake, or press ⌃⌥⌘D. Its TestFlight passphrase i
   (`NetworkRecorder.shared.openConnection(kind:url:headers:note:)`) show with their messages;
   the recording protocol itself leaves WebSocket tasks alone. A redirect shows as its own call,
   followed by the one it led to.
+- **Simulate** (the dial in the Network tab). For the calls Backstage records:
+  - A network condition: Slow 3G (2 s, 50 KB/s), Flaky (a fifth of calls drop), Offline, or a
+    custom delay, speed and failure rate, for every host or one. It lasts until the app is
+    reopened.
+  - Fake responses: rules that match a method and a URL (`*` stands for anything; without a `?`
+    the query is ignored) and answer with a status, headers and body, or with a failure such as a
+    timeout, without reaching the server. **Fake This Response** on a recorded call starts one
+    from its real answer. They're kept across launches, each with its own switch.
+
+  Simulated calls are tagged in the list, and an orange strip at the top of the screen shows
+  what's on (`Offline · 2 fakes`). WebSockets and other reported connections aren't affected.
 - **Logs.** This launch's `Logger` and `NSLog` messages, read with `OSLogStore`, filtered by level
   and category. Only the app's own code is shown (its executable, the packages linked into it and
   its frameworks) unless **App's Messages Only** is turned off to see the system's messages too.
@@ -151,8 +162,8 @@ tap Version seven times, shake, or press ⌃⌥⌘D. Its TestFlight passphrase i
   exports it.
 
 `swift test` runs the core's tests: when it's on, the passphrase, recording limits, files across
-launches, export, and requests recorded through the protocol (redirects included, WebSockets left
-alone).
+launches, export, requests recorded through the protocol (redirects included, WebSockets left
+alone), and the simulator's rules, fakes and conditions.
 
 ## License
 

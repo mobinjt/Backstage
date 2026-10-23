@@ -69,24 +69,36 @@ private struct BackstageTriggerModifier: ViewModifier {
 }
 
 /// Shows which server the app uses when it isn't the app's own, so a build pointed at staging is
-/// never mistaken for the real thing.
+/// never mistaken for the real thing, and a simulated network or fakes while they're on.
 struct ServerStrip: View {
     @State private var registry = Backstage.shared.registry
+    @State private var simulation = SimulationModel.shared
 
     var body: some View {
         let chosen = registry.serverSettings.compactMap { setting -> String? in
             guard let url = registry.serverInUse(for: setting.key) else { return nil }
             return setting.servers.first { $0.url == url }?.name ?? url.host() ?? url.absoluteString
         }
-        if !chosen.isEmpty {
-            Text(chosen.joined(separator: " · "))
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .background(BackstageStyle.accent, in: .capsule)
-                .allowsHitTesting(false)
-                .accessibilityLabel("Server: \(chosen.joined(separator: ", "))")
+        HStack(spacing: 4) {
+            if !chosen.isEmpty {
+                label(chosen.joined(separator: " · "), color: BackstageStyle.accent)
+                    .accessibilityLabel("Server: \(chosen.joined(separator: ", "))")
+            }
+            // A slow network or a fake left on is easy to forget.
+            if let summary = simulation.summary {
+                label(summary, color: .orange)
+                    .accessibilityLabel("Simulating: \(summary)")
+            }
         }
+        .allowsHitTesting(false)
+    }
+
+    private func label(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background(color, in: .capsule)
     }
 }

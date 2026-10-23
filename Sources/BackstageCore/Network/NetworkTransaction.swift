@@ -66,6 +66,8 @@ public struct NetworkTransaction: Codable, Sendable, Identifiable, Hashable {
     public var messages: [Message]
     /// What the app said about a connection, such as who is on the other end.
     public var note: String?
+    /// How Backstage changed this request: "Fake", "Slowed", or the condition that failed it.
+    public var simulation: String?
 
     public init(id: UUID = UUID(), kind: Kind, launchID: UUID, startDate: Date = .now, url: URL?, method: String? = nil, requestHeaders: [String: String] = [:]) {
         self.id = id

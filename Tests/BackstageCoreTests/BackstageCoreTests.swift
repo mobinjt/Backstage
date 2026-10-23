@@ -176,8 +176,8 @@ struct StatusAndLogTests {
     }
 
     @Test func onlyTheAppsOwnCodeCountsAsTheApp() {
-        let app: Set<String> = ["GameHub", "GameHub.debug.dylib", "Purchases"]
-        #expect(LogReader.isFromApp(sender: "GameHub.debug.dylib", subsystem: "com.mobinjt.gamehub", appImages: app))
+        let app: Set<String> = ["MyApp", "MyApp.debug.dylib", "Purchases"]
+        #expect(LogReader.isFromApp(sender: "MyApp.debug.dylib", subsystem: "com.example.myapp", appImages: app))
         #expect(LogReader.isFromApp(sender: "Purchases", subsystem: "com.revenuecat", appImages: app), "An embedded framework")
         #expect(LogReader.isFromApp(sender: "Foundation", subsystem: "", appImages: app), "NSLog")
         #expect(!LogReader.isFromApp(sender: "UIKitCore", subsystem: "com.apple.UIKit", appImages: app))
@@ -187,7 +187,7 @@ struct StatusAndLogTests {
 }
 
 /// Answers every request with a fixed response and remembers the request it saw. `/old` is
-/// redirected to `/v1/ping`.
+/// redirected to `/v1/ping`; `/big` answers with 20,000 bytes.
 final class StubProtocol: URLProtocol, @unchecked Sendable {
     static let seen = Mutex<[URLRequest]>([])
 
@@ -207,7 +207,7 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
         }
         let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(#"{"pong":true}"#.utf8))
+        client?.urlProtocol(self, didLoad: request.url?.path() == "/big" ? Data(count: 20_000) : Data(#"{"pong":true}"#.utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
 

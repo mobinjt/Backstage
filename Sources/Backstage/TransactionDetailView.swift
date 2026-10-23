@@ -13,6 +13,7 @@ struct TransactionDetailView: View {
     @State private var model = NetworkModel.shared
     @State private var part = Part.overview
     @State private var revealsSensitive = false
+    @State private var fakes: NetworkTransaction?
 
     private var transaction: NetworkTransaction? {
         model.transactions.first { $0.id == id } ?? NetworkRecorder.shared.transaction(id)
@@ -63,6 +64,9 @@ struct TransactionDetailView: View {
                     if let body = transaction.responseBody, let text = String(data: body.data, encoding: .utf8) {
                         Button("Copy Response Body", systemImage: "doc.on.doc") { copyToClipboard(text) }
                     }
+                    if transaction.kind == .http && transaction.isComplete {
+                        Button("Fake This Response", systemImage: "theatermasks") { fakes = transaction }
+                    }
                     Toggle("Show Hidden Headers", systemImage: "eye", isOn: $revealsSensitive)
                 } label: {
                     Label("Actions", systemImage: "ellipsis.circle")
@@ -70,6 +74,9 @@ struct TransactionDetailView: View {
             }
         }
         .onChange(of: id) { part = .overview }
+        .sheet(item: $fakes) { transaction in
+            NewFakeSheet(transaction: transaction)
+        }
     }
 
     @ViewBuilder
@@ -83,6 +90,9 @@ struct TransactionDetailView: View {
                 row("Method", method)
             }
             row("Status", transaction.statusText)
+            if let simulation = transaction.simulation {
+                row("Simulated", simulation == "Fake" ? "A fake response; the server never saw it" : simulation == "Slowed" ? "Slowed by Simulate" : "Failed by Simulate (\(simulation))")
+            }
             if let note = transaction.note {
                 row("Note", note)
             }

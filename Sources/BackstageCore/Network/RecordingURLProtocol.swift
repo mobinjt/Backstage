@@ -2,7 +2,8 @@ import Foundation
 import Synchronization
 
 /// Records HTTP calls: it takes each request while Backstage records, sends it on its own session,
-/// and passes everything back to the app's task unchanged while noting it down.
+/// and passes everything back to the app's task unchanged while noting it down. It also plays the
+/// `NetworkSimulator`'s part: a fake response, a failure, or a slower answer.
 ///
 /// It doesn't see WebSocket tasks or background sessions; the app reports WebSockets through
 /// `NetworkRecorder.openConnection`.
@@ -38,12 +39,24 @@ public final class RecordingURLProtocol: URLProtocol, @unchecked Sendable {
     /// The thread that started loading; the app's task expects every callback there.
     private var clientRunLoop: CFRunLoop?
     private var clientModes: [CFString] = []
+    /// Events reach the app in order through here, held back for a simulated delay or speed.
+    private let deliveries = DispatchQueue(label: "Backstage.RecordingURLProtocol.deliveries")
+    private let pacing = Mutex(Pacing())
 
     private struct Loading {
-        let task: URLSessionDataTask
+        /// `nil` for a fake or a simulated failure, which never reach the server.
+        let task: URLSessionDataTask?
         let transactionID: UUID
         var response: URLResponse?
         var body = Data()
+        var isFinished = false
+    }
+
+    private struct Pacing {
+        var bytesPerSecond: Int?
+        /// When the next event may reach the app.
+        var next = DispatchTime.now()
+        var isStopped = false
     }
 
     // MARK: URLProtocol
@@ -94,16 +107,88 @@ public final class RecordingURLProtocol: URLProtocol, @unchecked Sendable {
             requestHeaders: request.allHTTPHeaderFields ?? [:]
         )
         transaction.requestBody = body.map { NetworkTransaction.Body($0, limit: limit) }
+        let plan = NetworkSimulator.shared.plan(for: request)
+        transaction.simulation = plan.label
         recorder.add(transaction)
 
-        let task = Self.sharedForwarder.dataTask(with: forwarded, for: self)
-        loading.withLock { $0 = Loading(task: task, transactionID: transaction.id) }
-        task.resume()
+        switch plan {
+        case .forward(let delay, let bytesPerSecond):
+            pacing.withLock { pacing in
+                pacing.bytesPerSecond = bytesPerSecond
+                pacing.next = .now() + delay
+            }
+            let task = Self.sharedForwarder.dataTask(with: forwarded, for: self)
+            loading.withLock { $0 = Loading(task: task, transactionID: transaction.id) }
+            task.resume()
+        case .fake(let fake):
+            loading.withLock { $0 = Loading(task: nil, transactionID: transaction.id) }
+            pacing.withLock { $0.next = .now() + fake.delay }
+            answer(with: fake)
+        case .fail(let code, let delay, _):
+            loading.withLock { $0 = Loading(task: nil, transactionID: transaction.id) }
+            pacing.withLock { $0.next = .now() + delay }
+            didComplete(with: failure(code))
+        }
     }
 
     override public func stopLoading() {
         let task = loading.withLock { $0?.task }
+        pacing.withLock { $0.isStopped = true }
         task?.cancel()
+        // Events still held back won't reach the app now; the request ends here.
+        finish(error: URLError(.cancelled), redirectedTo: nil)
+    }
+
+    // MARK: Simulating
+
+    private func answer(with fake: NetworkSimulator.Fake) {
+        guard let url = request.url else { return }
+        switch fake.answer {
+        case .response(let status, let headers, let body):
+            if let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers) {
+                didReceive(response)
+            }
+            if !body.isEmpty {
+                didReceive(body)
+            }
+            didComplete(with: nil)
+        case .failure(let failure):
+            didComplete(with: self.failure(failure.code))
+        }
+    }
+
+    private func failure(_ code: URLError.Code) -> URLError {
+        var info: [String: Any] = [:]
+        if let url = request.url {
+            info[NSURLErrorFailingURLErrorKey] = url
+            info[NSURLErrorFailingURLStringErrorKey] = url.absoluteString
+        }
+        return URLError(code, userInfo: info)
+    }
+
+    /// Runs `work` after the events before it, and later still when the speed is limited and
+    /// `bytes` have to arrive first.
+    private func deliver(bytes: Int = 0, _ work: @escaping @Sendable () -> Void) {
+        let deadline = pacing.withLock { pacing -> DispatchTime in
+            let start = max(pacing.next, .now())
+            if let speed = pacing.bytesPerSecond, speed > 0, bytes > 0 {
+                pacing.next = start + Double(bytes) / Double(speed)
+            } else {
+                pacing.next = start
+            }
+            return pacing.next
+        }
+        deliveries.asyncAfter(deadline: deadline) { [self] in
+            guard !pacing.withLock({ $0.isStopped }) else { return }
+            work()
+        }
+    }
+
+    /// A body in pieces of a tenth of a second each at a limited speed, so it arrives steadily.
+    private func pieces(of data: Data) -> [Data] {
+        guard let speed = pacing.withLock({ $0.bytesPerSecond }), speed > 0 else { return [data] }
+        let size = max(speed / 10, 1_024)
+        return stride(from: 0, to: data.count, by: size).map { data.subdata(in: $0..<min($0 + size, data.count)) }
     }
 
     /// The request's body, also when it was given as a stream (as `URLSession` does for uploads).
@@ -131,41 +216,57 @@ public final class RecordingURLProtocol: URLProtocol, @unchecked Sendable {
     }
 
     fileprivate func didReceive(_ response: URLResponse) {
-        loading.withLock { $0?.response = response }
-        onClientThread { [self] in client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed) }
+        deliver { [self] in
+            loading.withLock { $0?.response = response }
+            onClientThread { [self] in client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed) }
+        }
     }
 
     fileprivate func didReceive(_ data: Data) {
-        loading.withLock { $0?.body.append(data) }
-        onClientThread { [self] in client?.urlProtocol(self, didLoad: data) }
-    }
-
-    fileprivate func wasRedirected(to request: URLRequest, by response: HTTPURLResponse) {
-        // Recorded as its own transaction; the app's session follows the redirect with a new
-        // request, which this protocol records again.
-        loading.withLock { $0?.response = response }
-        finish(error: nil, redirectedTo: request.url)
-        // The new request carries the mark that this one was sent on already; without it, it's
-        // recorded like any other.
-        let mutable = (request as NSURLRequest).mutableCopy() as! NSMutableURLRequest
-        URLProtocol.removeProperty(forKey: Self.handledKey, in: mutable)
-        let next = mutable as URLRequest
-        onClientThread { [self] in client?.urlProtocol(self, wasRedirectedTo: next, redirectResponse: response) }
-    }
-
-    fileprivate func didComplete(with error: (any Error)?) {
-        finish(error: error, redirectedTo: nil)
-        onClientThread { [self] in
-            if let error {
-                client?.urlProtocol(self, didFailWithError: error)
-            } else {
-                client?.urlProtocolDidFinishLoading(self)
+        for piece in pieces(of: data) {
+            deliver(bytes: piece.count) { [self] in
+                loading.withLock { $0?.body.append(piece) }
+                onClientThread { [self] in client?.urlProtocol(self, didLoad: piece) }
             }
         }
     }
 
+    fileprivate func wasRedirected(to request: URLRequest, by response: HTTPURLResponse) {
+        deliver { [self] in
+            // Recorded as its own transaction; the app's session follows the redirect with a new
+            // request, which this protocol records again.
+            loading.withLock { $0?.response = response }
+            finish(error: nil, redirectedTo: request.url)
+            // The new request carries the mark that this one was sent on already; without it,
+            // it's recorded like any other.
+            let mutable = (request as NSURLRequest).mutableCopy() as! NSMutableURLRequest
+            URLProtocol.removeProperty(forKey: Self.handledKey, in: mutable)
+            let next = mutable as URLRequest
+            onClientThread { [self] in client?.urlProtocol(self, wasRedirectedTo: next, redirectResponse: response) }
+        }
+    }
+
+    fileprivate func didComplete(with error: (any Error)?) {
+        deliver { [self] in
+            finish(error: error, redirectedTo: nil)
+            onClientThread { [self] in
+                if let error {
+                    client?.urlProtocol(self, didFailWithError: error)
+                } else {
+                    client?.urlProtocolDidFinishLoading(self)
+                }
+            }
+        }
+    }
+
+    /// Notes how the request ended, once.
     private func finish(error: (any Error)?, redirectedTo: URL?) {
-        guard let loading = loading.withLock({ $0 }) else { return }
+        let loading = loading.withLock { loading -> Loading? in
+            guard let current = loading, !current.isFinished else { return nil }
+            loading?.isFinished = true
+            return current
+        }
+        guard let loading else { return }
         let limit = recorder.limits.maximumBodySize
         recorder.update(loading.transactionID) { transaction in
             transaction.endDate = .now

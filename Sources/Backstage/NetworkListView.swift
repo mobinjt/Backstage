@@ -42,6 +42,8 @@ struct NetworkListView: View {
     @State private var host: String?
     @State private var export: ExportFile?
     @State private var confirmsClear = false
+    @State private var simulation = SimulationModel.shared
+    @State private var showsSimulation = false
 
     /// Everything the other filters let through, before the status chips.
     private var matching: [NetworkTransaction] {
@@ -121,6 +123,10 @@ struct NetworkListView: View {
         .navigationTitle("Network")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
+                Button("Simulate", systemImage: simulation.summary == nil ? "dial.medium" : "dial.medium.fill") { showsSimulation = true }
+                    .tint(simulation.summary == nil ? nil : .orange)
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Toggle("This Launch Only", systemImage: "clock", isOn: $thisLaunchOnly)
                     Picker("Host", selection: $host) {
@@ -136,6 +142,9 @@ struct NetworkListView: View {
                     Label("Options", systemImage: thisLaunchOnly || host != nil ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                 }
             }
+        }
+        .sheet(isPresented: $showsSimulation) {
+            NavigationStack { SimulationView() }
         }
         .confirmationDialog("Clear everything recorded?", isPresented: $confirmsClear) {
             Button("Clear", role: .destructive) { NetworkRecorder.shared.clear() }
@@ -254,6 +263,14 @@ struct TransactionRow: View {
                         .foregroundStyle(BackstageStyle.color(forStatus: transaction.statusCode, failed: transaction.isFailure))
                 } else {
                     ProgressView().controlSize(.mini)
+                }
+                if let simulation = transaction.simulation {
+                    Text(simulation)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(.orange, in: .rect(cornerRadius: 4))
                 }
                 Spacer(minLength: 4)
                 Text(transaction.startDate, format: BackstageStyle.time)
