@@ -177,6 +177,7 @@ struct PerformanceView: View {
             } footer: {
                 Text("Times the main thread didn't respond for more than \(Int(PerformanceMonitor.hangThreshold * 1_000)) ms.")
             }
+            IOSReportsSection()
         }
         .formStyle(.grouped)
         .navigationTitle("Performance")

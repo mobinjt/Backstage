@@ -36,6 +36,7 @@ private func setUpBackstage() {
     registry.addSwitch("Verbose logging", key: DemoAPI.verboseLoggingKey, footnote: "Logs each request's headers.")
     registry.addAction("Send every request", group: "Demo") { await DemoAPI.shared.sendAll() }
     registry.addAction("Simulate a nearby peer", group: "Demo") { await NearbyPeer.simulate() }
+    registry.addAction("Add sample iOS reports", group: "Demo") { SampleIOSReports.add() }
     registry.addAction("Reset demo data", group: "Demo") { DemoData.reset() }
     registry.addAction("Sign out", group: "Account", isDestructive: true) { DemoData.signOut() }
 

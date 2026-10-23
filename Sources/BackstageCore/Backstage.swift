@@ -120,11 +120,20 @@ public final class Backstage {
         Task.detached(priority: .utility) {
             recorder.loadPrevious()
         }
+        #if canImport(MetricKit)
+        IOSReportListener.shared.start()
+        #endif
     }
 
     private func turnOff(purge: Bool) {
         Self.active.withLock { $0 = false }
         NetworkRecorder.shared.setRecording(false, purge: purge)
+        #if canImport(MetricKit)
+        IOSReportListener.shared.stop()
+        #endif
+        if purge {
+            IOSReportStore.shared.clear()
+        }
         isPanelPresented = false
     }
 

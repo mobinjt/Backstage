@@ -57,6 +57,8 @@ public final class RecordingURLProtocol: URLProtocol, @unchecked Sendable {
         /// When the next event may reach the app.
         var next = DispatchTime.now()
         var isStopped = false
+        /// Events not delivered yet, in order; each runs once it and those before it are due.
+        var waiting: [(deadline: DispatchTime, work: @Sendable () -> Void)] = []
     }
 
     // MARK: URLProtocol
@@ -176,11 +178,20 @@ public final class RecordingURLProtocol: URLProtocol, @unchecked Sendable {
             } else {
                 pacing.next = start
             }
+            pacing.waiting.append((pacing.next, work))
             return pacing.next
         }
+        // Timers due at the same moment may fire in any order, so each one runs whatever is due
+        // from the front of the line, keeping the events in order.
         deliveries.asyncAfter(deadline: deadline) { [self] in
-            guard !pacing.withLock({ $0.isStopped }) else { return }
-            work()
+            let due = pacing.withLock { pacing -> [@Sendable () -> Void] in
+                guard !pacing.isStopped else { return [] }
+                let now = DispatchTime.now()
+                let count = pacing.waiting.prefix { $0.deadline <= now }.count
+                defer { pacing.waiting.removeFirst(count) }
+                return pacing.waiting.prefix(count).map(\.work)
+            }
+            due.forEach { $0() }
         }
     }
 

@@ -150,11 +150,21 @@ tap Version seven times, shake, or press ⌃⌥⌘D. Its TestFlight passphrase i
   last hangs and the screen's top rate. On a 120 Hz iPhone, iOS holds an app to 60 fps unless
   its Info.plist sets `CADisableMinimumFrameDurationOnPhone` to YES; the tab says so when it's
   missing (the example app sets it).
+- **Reports from iOS** (in the Performance tab). What iOS collects about the app through
+  MetricKit: crashes, hangs, CPU and disk-write overuse and slow launches with their call stacks,
+  which arrive on the next launch, and a daily summary (typical launch and hang, peak memory,
+  CPU, disk writes, time on screen and in the background). Each can be copied or shared as iOS
+  wrote it. Call stacks are addresses; Xcode or `atos` turns them into names with the build's
+  dSYM. Reports delivered while Backstage was off are picked up when it turns on, and kept for
+  30 days in the app's Caches. A crash reporter the app already uses keeps getting its own.
+  Nothing arrives in the simulator: on a device connected to Xcode, Debug > Simulate MetricKit
+  Payloads sends samples, and the example app has **Add sample iOS reports**.
 
 ## How it's built
 
 - `BackstageCore`: when it's on, the passphrase, the recorder (`NetworkRecorder`,
-  `RecordingURLProtocol`), logs, Keychain and performance sampling. No UI.
+  `RecordingURLProtocol`), the simulator (`NetworkSimulator`), logs, Keychain, performance
+  sampling and iOS's reports (`IOSReportStore`). No UI.
 - `Backstage`: the SwiftUI panel. On iPhone and iPad it lives in its own window above the app's,
   so it opens over sheets and the overlay stays on top; touches pass through everywhere else. On
   the Mac the panel and the overlay are their own windows.
@@ -163,7 +173,7 @@ tap Version seven times, shake, or press ⌃⌥⌘D. Its TestFlight passphrase i
 
 `swift test` runs the core's tests: when it's on, the passphrase, recording limits, files across
 launches, export, requests recorded through the protocol (redirects included, WebSockets left
-alone), and the simulator's rules, fakes and conditions.
+alone), the simulator's rules, fakes and conditions, and reading iOS's reports.
 
 ## License
 
