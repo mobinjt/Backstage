@@ -40,6 +40,8 @@ struct NetworkListView: View {
     @State private var statuses: Set<StatusClass> = []
     @State private var thisLaunchOnly = false
     @State private var host: String?
+    /// "GET", "POST"…; `nil` for every method.
+    @State private var method: String?
     @State private var export: ExportFile?
     @State private var confirmsClear = false
     @State private var simulation = SimulationModel.shared
@@ -57,6 +59,7 @@ struct NetworkListView: View {
             }
             if thisLaunchOnly && transaction.launchID != launchID { return false }
             if let host, transaction.host != host { return false }
+            if let method, transaction.method?.uppercased() != method { return false }
             if !search.isEmpty {
                 let haystack = [transaction.url?.absoluteString, transaction.note, transaction.method, transaction.statusCode.map(String.init)].compactMap { $0 }.joined(separator: " ")
                 if !haystack.localizedCaseInsensitiveContains(search) { return false }
@@ -74,6 +77,13 @@ struct NetworkListView: View {
 
     private var hosts: [String] {
         Array(Set(model.transactions.compactMap(\.host))).sorted()
+    }
+
+    /// The methods recorded, the usual ones first.
+    private var methods: [String] {
+        let order = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
+        let recorded = Set(model.transactions.compactMap { $0.method?.uppercased() })
+        return recorded.sorted { (order.firstIndex(of: $0) ?? order.count, $0) < (order.firstIndex(of: $1) ?? order.count, $1) }
     }
 
     var body: some View {
@@ -129,17 +139,23 @@ struct NetworkListView: View {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Toggle("This Launch Only", systemImage: "clock", isOn: $thisLaunchOnly)
-                    Picker("Host", selection: $host) {
+                    Picker("Method", systemImage: "arrow.left.arrow.right", selection: $method) {
+                        Text("All Methods").tag(String?.none)
+                        ForEach(methods, id: \.self) { Text($0).tag(String?.some($0)) }
+                    }
+                    .pickerStyle(.menu)
+                    Picker("Host", systemImage: "server.rack", selection: $host) {
                         Text("All Hosts").tag(String?.none)
                         ForEach(hosts, id: \.self) { Text($0).tag(String?.some($0)) }
                     }
+                    .pickerStyle(.menu)
                     Divider()
                     Button("Export as HAR…", systemImage: "square.and.arrow.up") { exportHAR() }
                     Button("Export as JSON…", systemImage: "curlybraces") { exportJSON() }
                     Divider()
                     Button("Clear", systemImage: "trash", role: .destructive) { confirmsClear = true }
                 } label: {
-                    Label("Options", systemImage: thisLaunchOnly || host != nil ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                    Label("Options", systemImage: thisLaunchOnly || host != nil || method != nil ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                 }
             }
         }

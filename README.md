@@ -116,7 +116,8 @@ tap Version seven times, shake, or press ⌃⌥⌘D. Its TestFlight passphrase i
 ## What's in the panel
 
 - **Network.** Every HTTP call: method, URL, status, timing, headers and bodies (cut at 1 MB),
-  with search and filters, pretty JSON, copy as cURL, and export as HAR or JSON. `Authorization`,
+  with search and filters (kind, status, method, host, this launch only), pretty JSON, copy as
+  cURL, and export as HAR or JSON. `Authorization`,
   cookies and API keys stay hidden until tapped and are left out of exports. The last 1,000 calls
   are kept across launches in the app's Caches. WebSockets and other connections the app reports
   (`NetworkRecorder.shared.openConnection(kind:url:headers:note:)`) show with their messages;
