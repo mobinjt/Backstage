@@ -5,6 +5,7 @@ import SwiftUI
 /// The small overlay: frame rate, memory and CPU, with a flash when the main thread hangs.
 struct PerformanceOverlayView: View {
     @State private var monitor = PerformanceMonitor.shared
+    @State private var backstage = Backstage.shared
     @State private var flashesHang = false
 
     var body: some View {
@@ -21,6 +22,9 @@ struct PerformanceOverlayView: View {
             Sparkline(values: monitor.samples.map(\.framesPerSecond), maximum: 120)
                 .stroke(fpsColor(sample?.framesPerSecond), lineWidth: 1.5)
                 .frame(width: 140, height: 18)
+            if backstage.networkOverlay == .inPerformanceOverlay {
+                NetworkLinesInPerformanceOverlay()
+            }
         }
         .padding(8)
         .background(.black.opacity(0.75), in: .rect(cornerRadius: 10))
@@ -65,18 +69,29 @@ struct PerformanceOverlayView: View {
 }
 
 #if os(iOS)
-/// The overlay on iPhone and iPad: dragged anywhere, kept where it was left; a tap opens
-/// Backstage on the tab it was last on, and a long press offers to open it or hide the overlay.
-struct DraggablePerformanceOverlay: View {
+/// An overlay on iPhone and iPad: dragged anywhere and kept where it was left. A tap opens
+/// Backstage on the tab it was last on; a long press offers to open it or hide the overlay.
+struct DraggableOverlay<Content: View>: View {
     let reportFrame: (CGRect) -> Void
-    @AppStorage("Backstage.overlay.x") private var x = 0.8
-    @AppStorage("Backstage.overlay.y") private var y = 0.12
+    let hide: () -> Void
+    @ViewBuilder let content: Content
+    @AppStorage private var x: Double
+    @AppStorage private var y: Double
     @State private var dragOffset = CGSize.zero
     @State private var size = CGSize(width: 160, height: 70)
 
+    /// `place` names where it's kept; `x` and `y` are where it starts, as fractions of the screen.
+    init(place: String, x: Double, y: Double, reportFrame: @escaping (CGRect) -> Void, hide: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+        self.reportFrame = reportFrame
+        self.hide = hide
+        self.content = content()
+        _x = AppStorage(wrappedValue: x, "Backstage.\(place).x")
+        _y = AppStorage(wrappedValue: y, "Backstage.\(place).y")
+    }
+
     var body: some View {
         GeometryReader { proxy in
-            PerformanceOverlayView()
+            content
                 .fixedSize()
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
                     size = frame.size
@@ -95,11 +110,9 @@ struct DraggablePerformanceOverlay: View {
                 )
                 .contextMenu {
                     Button("Open Backstage", systemImage: "wrench.and.screwdriver") { Backstage.shared.open() }
-                    Button("Hide Overlay", systemImage: "eye.slash") { Backstage.shared.showsPerformanceOverlay = false }
+                    Button("Hide Overlay", systemImage: "eye.slash", action: hide)
                 }
         }
-        .onAppear { PerformanceMonitor.shared.start() }
-        .onDisappear { PerformanceMonitor.shared.stop() }
     }
 
     /// Where it was left, kept fully on screen.
@@ -140,9 +153,15 @@ struct PerformanceView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Show Overlay", isOn: Bindable(backstage).showsPerformanceOverlay)
+                Toggle("Performance", isOn: Bindable(backstage).showsPerformanceOverlay)
+                Picker("Network", selection: Bindable(backstage).networkOverlay) {
+                    ForEach(Backstage.NetworkOverlayStyle.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                Toggle("Alert on Failed or Slow Calls", isOn: Bindable(backstage).alertsOnNetworkProblems)
+            } header: {
+                Text("Overlays")
             } footer: {
-                Text("A small window above every screen with the frame rate, dropped frames, memory and CPU. It stays on across launches.")
+                Text("Small windows above every screen; drag them anywhere, tap one to open Backstage. Performance shows the frame rate, dropped frames, memory and CPU. Network shows the calls in its own window, compact or as a list, or inside the performance one. Alerts appear at the bottom when a call fails or takes \(Int(NetworkActivity.slow)) s or more. They stay on across launches.")
             }
             Section {
                 LabeledContent("Screen", value: "Up to \(PerformanceMonitor.screenMaximumFramesPerSecond) fps")

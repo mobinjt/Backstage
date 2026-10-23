@@ -15,9 +15,9 @@ final class BackstageWindowController {
     private weak var previousKeyWindow: UIWindow?
     weak var scene: UIWindowScene?
 
-    /// Where the performance overlay is, in the window's coordinates; touches there go to it.
-    var overlayFrame: CGRect = .zero {
-        didSet { window?.interactiveFrames = [overlayFrame] }
+    /// Where each overlay is, in the window's coordinates; touches there go to it.
+    var overlayFrames: [String: CGRect] = [:] {
+        didSet { window?.interactiveFrames = Array(overlayFrames.values) }
     }
 
     func setVisible(_ visible: Bool) {
@@ -116,9 +116,38 @@ private struct OverlayRoot: View {
             if backstage.isEnabled {
                 ServerStrip()
                 if backstage.showsPerformanceOverlay {
-                    DraggablePerformanceOverlay { frame in
-                        BackstageWindowController.shared.overlayFrame = frame
+                    DraggableOverlay(place: "overlay", x: 0.8, y: 0.12) { frame in
+                        BackstageWindowController.shared.overlayFrames["performance"] = frame
+                    } hide: {
+                        backstage.showsPerformanceOverlay = false
+                    } content: {
+                        PerformanceOverlayView()
                     }
+                    .onAppear { PerformanceMonitor.shared.start() }
+                    .onDisappear { PerformanceMonitor.shared.stop() }
+                }
+                if backstage.networkOverlay == .compact || backstage.networkOverlay == .ticker {
+                    DraggableOverlay(place: "networkOverlay", x: 0.75, y: 0.3) { frame in
+                        BackstageWindowController.shared.overlayFrames["network"] = frame
+                    } hide: {
+                        backstage.networkOverlay = .off
+                    } content: {
+                        if backstage.networkOverlay == .ticker {
+                            TickerNetworkOverlay()
+                        } else {
+                            CompactNetworkOverlay()
+                        }
+                    }
+                }
+                if backstage.alertsOnNetworkProblems {
+                    // Above the home indicator; touches pass through to the app.
+                    VStack {
+                        Spacer()
+                        NetworkAlertsView()
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 48)
+                    }
+                    .allowsHitTesting(false)
                 }
             }
         }
@@ -135,7 +164,10 @@ private struct OverlayRoot: View {
             BackstageWindowController.shared.setPresenting(presenting)
         }
         .onChange(of: backstage.showsPerformanceOverlay && backstage.isEnabled) { _, shows in
-            if !shows { BackstageWindowController.shared.overlayFrame = .zero }
+            if !shows { BackstageWindowController.shared.overlayFrames["performance"] = nil }
+        }
+        .onChange(of: backstage.isEnabled && [.compact, .ticker].contains(backstage.networkOverlay)) { _, shows in
+            if !shows { BackstageWindowController.shared.overlayFrames["network"] = nil }
         }
     }
 }

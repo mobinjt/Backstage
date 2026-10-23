@@ -45,6 +45,12 @@ private struct BackstageHostModifier: ViewModifier {
             .onChange(of: backstage.isEnabled && backstage.showsPerformanceOverlay, initial: true) { _, shows in
                 BackstageWindows.shared.setPerformanceOverlay(visible: shows)
             }
+            .onChange(of: backstage.isEnabled && [.compact, .ticker].contains(backstage.networkOverlay), initial: true) { _, shows in
+                BackstageWindows.shared.setNetworkOverlay(visible: shows)
+            }
+            .onChange(of: backstage.isEnabled && backstage.alertsOnNetworkProblems, initial: true) { _, shows in
+                BackstageWindows.shared.setNetworkAlerts(visible: shows)
+            }
             #endif
     }
 }

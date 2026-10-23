@@ -57,6 +57,8 @@ public final class Backstage {
         self.defaults = defaults
         isUnlocked = unlockStore.isUnlocked
         showsPerformanceOverlay = defaults.bool(forKey: Self.performanceOverlayKey)
+        networkOverlay = defaults.string(forKey: Self.networkOverlayKey).flatMap(NetworkOverlayStyle.init(rawValue:)) ?? .off
+        alertsOnNetworkProblems = defaults.bool(forKey: Self.networkAlertsKey)
     }
 
     /// On now: always from Xcode, and on TestFlight devices after unlocking.
@@ -198,6 +200,53 @@ public final class Backstage {
 
     /// The performance overlay is shown (while Backstage is on). Kept across launches.
     public var showsPerformanceOverlay: Bool {
-        didSet { defaults.set(showsPerformanceOverlay, forKey: Self.performanceOverlayKey) }
+        didSet {
+            defaults.set(showsPerformanceOverlay, forKey: Self.performanceOverlayKey)
+            // The network lines go with it.
+            if !showsPerformanceOverlay && networkOverlay == .inPerformanceOverlay {
+                networkOverlay = .off
+            }
+        }
+    }
+
+    // MARK: Network overlay
+
+    /// How the network overlay shows the app's calls.
+    public enum NetworkOverlayStyle: String, Sendable, CaseIterable {
+        case off
+        /// The performance overlay's size: calls running, failures, the last call and a bar each.
+        case compact
+        /// The last few calls, one line each.
+        case ticker
+        /// A few lines in the performance overlay.
+        case inPerformanceOverlay
+
+        public var title: String {
+            switch self {
+            case .off: "Off"
+            case .compact: "Compact"
+            case .ticker: "Ticker"
+            case .inPerformanceOverlay: "In Performance Overlay"
+            }
+        }
+    }
+
+    private static let networkOverlayKey = "Backstage.networkOverlay"
+    private static let networkAlertsKey = "Backstage.networkAlerts"
+
+    /// The network overlay (while Backstage is on). Kept across launches.
+    public var networkOverlay: NetworkOverlayStyle = .off {
+        didSet {
+            defaults.set(networkOverlay.rawValue, forKey: Self.networkOverlayKey)
+            if networkOverlay == .inPerformanceOverlay && !showsPerformanceOverlay {
+                showsPerformanceOverlay = true
+            }
+        }
+    }
+
+    /// A short alert at the bottom of the screen when a call fails or is slow (while Backstage is
+    /// on). Kept across launches.
+    public var alertsOnNetworkProblems: Bool = false {
+        didSet { defaults.set(alertsOnNetworkProblems, forKey: Self.networkAlertsKey) }
     }
 }

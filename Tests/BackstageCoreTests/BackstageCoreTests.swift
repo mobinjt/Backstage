@@ -289,3 +289,35 @@ struct RecordingURLProtocolTests {
         #expect(NetworkRecorder.shared.transactions.isEmpty)
     }
 }
+
+@MainActor
+struct OverlaySettingsTests {
+    private func backstage() -> (Backstage, UserDefaults) {
+        let name = "backstage-tests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        return (Backstage(unlockStore: UnlockStore(service: "BackstageTests", account: name), defaults: defaults), defaults)
+    }
+
+    @Test func networkLinesInThePerformanceOverlayGoWithIt() {
+        let (backstage, _) = backstage()
+        #expect(backstage.networkOverlay == .off)
+        backstage.networkOverlay = .inPerformanceOverlay
+        #expect(backstage.showsPerformanceOverlay, "Choosing it shows the performance overlay")
+        backstage.showsPerformanceOverlay = false
+        #expect(backstage.networkOverlay == .off, "Hiding the performance overlay takes the network lines with it")
+        backstage.networkOverlay = .ticker
+        backstage.showsPerformanceOverlay = true
+        backstage.showsPerformanceOverlay = false
+        #expect(backstage.networkOverlay == .ticker, "Its own window doesn't depend on the performance overlay")
+    }
+
+    @Test func overlaySettingsAreKeptAcrossLaunches() {
+        let (backstage, defaults) = backstage()
+        backstage.networkOverlay = .compact
+        backstage.alertsOnNetworkProblems = true
+        let nextLaunch = Backstage(unlockStore: UnlockStore(service: "BackstageTests", account: "next"), defaults: defaults)
+        #expect(nextLaunch.networkOverlay == .compact)
+        #expect(nextLaunch.alertsOnNetworkProblems)
+    }
+}

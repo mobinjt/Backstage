@@ -10,6 +10,8 @@ final class BackstageWindows: NSObject, NSWindowDelegate {
 
     private var panelWindow: NSWindow?
     private var overlayPanel: NSPanel?
+    private var networkPanel: NSPanel?
+    private var alertsPanel: NSPanel?
 
     func showPanel() {
         if panelWindow == nil {
@@ -39,32 +41,85 @@ final class BackstageWindows: NSObject, NSWindowDelegate {
     func setPerformanceOverlay(visible: Bool) {
         if visible {
             if overlayPanel == nil {
-                let panel = NSPanel(
-                    contentRect: NSRect(x: 0, y: 0, width: 220, height: 90),
-                    styleMask: [.nonactivatingPanel, .borderless],
-                    backing: .buffered,
-                    defer: false
-                )
-                panel.level = .floating
-                panel.isFloatingPanel = true
-                panel.hidesOnDeactivate = false
-                panel.isMovableByWindowBackground = true
-                panel.backgroundColor = .clear
-                panel.hasShadow = true
-                panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
                 // A click opens Backstage on the tab it was last on; dragging moves the panel.
-                panel.contentViewController = NSHostingController(rootView: PerformanceOverlayView().onTapGesture { PanelView.open() })
-                panel.setFrameAutosaveName("Backstage.performance")
-                if let screen = NSScreen.main, panel.frame.origin == .zero {
-                    panel.setFrameOrigin(NSPoint(x: screen.visibleFrame.maxX - 240, y: screen.visibleFrame.maxY - 110))
-                }
-                overlayPanel = panel
+                overlayPanel = makeOverlayPanel(PerformanceOverlayView().onTapGesture { PanelView.open() }, name: "Backstage.performance", fromTop: 110)
             }
             overlayPanel?.orderFrontRegardless()
             PerformanceMonitor.shared.start()
         } else {
             overlayPanel?.orderOut(nil)
             PerformanceMonitor.shared.stop()
+        }
+    }
+
+    func setNetworkOverlay(visible: Bool) {
+        if visible {
+            if networkPanel == nil {
+                networkPanel = makeOverlayPanel(MacNetworkOverlay().onTapGesture { PanelView.open() }, name: "Backstage.network", fromTop: 260)
+            }
+            networkPanel?.orderFrontRegardless()
+        } else {
+            networkPanel?.orderOut(nil)
+        }
+    }
+
+    /// The alerts float at the bottom of the main screen and let clicks through.
+    func setNetworkAlerts(visible: Bool) {
+        if visible {
+            if alertsPanel == nil {
+                let panel = makeOverlayPanel(NetworkAlertsView().frame(width: 380, height: 150, alignment: .bottom), name: nil, fromTop: 0)
+                panel.ignoresMouseEvents = true
+                panel.hasShadow = false
+                if let screen = NSScreen.main {
+                    panel.setFrameOrigin(NSPoint(x: screen.visibleFrame.midX - 190, y: screen.visibleFrame.minY + 24))
+                }
+                alertsPanel = panel
+            }
+            alertsPanel?.orderFrontRegardless()
+        } else {
+            alertsPanel?.orderOut(nil)
+        }
+    }
+
+    /// A small borderless window above every other, sized to what it shows, at the top right of
+    /// the main screen until moved (`name` keeps where it was left).
+    private func makeOverlayPanel(_ content: some View, name: String?, fromTop: CGFloat) -> NSPanel {
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 220, height: 90),
+            styleMask: [.nonactivatingPanel, .borderless],
+            backing: .buffered,
+            defer: false
+        )
+        panel.level = .floating
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
+        panel.isMovableByWindowBackground = true
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        let host = NSHostingController(rootView: content)
+        host.sizingOptions = [.preferredContentSize]
+        panel.contentViewController = host
+        if let name {
+            panel.setFrameAutosaveName(name)
+        }
+        if let screen = NSScreen.main, panel.frame.origin == .zero {
+            panel.setFrameOrigin(NSPoint(x: screen.visibleFrame.maxX - 300, y: screen.visibleFrame.maxY - fromTop))
+        }
+        return panel
+    }
+
+}
+
+/// The network overlay in its own window: compact or ticker, as chosen.
+private struct MacNetworkOverlay: View {
+    @State private var backstage = Backstage.shared
+
+    var body: some View {
+        if backstage.networkOverlay == .ticker {
+            TickerNetworkOverlay()
+        } else {
+            CompactNetworkOverlay()
         }
     }
 }
