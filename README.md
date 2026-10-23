@@ -115,6 +115,8 @@ tap Version seven times, shake, or press ⌃⌥⌘D. Its TestFlight passphrase i
 
 ## What's in the panel
 
+However it's opened, the panel comes back on the tab it was last on.
+
 - **Network.** Every HTTP call: method, URL, status, timing, headers and bodies (cut at 1 MB),
   with search and filters (kind, status, method, host, this launch only), pretty JSON, copy as
   cURL, and export as HAR or JSON. `Authorization`,
@@ -146,8 +148,8 @@ tap Version seven times, shake, or press ⌃⌥⌘D. Its TestFlight passphrase i
 - **Storage.** The app's UserDefaults (edit, delete), Keychain items (show a value after
   confirming, delete) and files (browse, share, delete).
 - **Performance.** A floating overlay with frame rate, dropped frames, memory and CPU, and a
-  one-minute graph. A flash marks a main-thread hang (over 250 ms). Tapping it opens the Logs
-  tab; it can be dragged anywhere. The tab adds charts, the
+  one-minute graph. A flash marks a main-thread hang (over 250 ms). Tapping it opens
+  Backstage; it can be dragged anywhere. The tab adds charts, the
   last hangs and the screen's top rate. On a 120 Hz iPhone, iOS holds an app to 60 fps unless
   its Info.plist sets `CADisableMinimumFrameDurationOnPhone` to YES; the tab says so when it's
   missing (the example app sets it).

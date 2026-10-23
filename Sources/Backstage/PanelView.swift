@@ -12,11 +12,10 @@ struct PanelView: View {
 
     private static let tabKey = "Backstage.panelTab"
 
-    /// Opens the panel on a tab, such as Logs when the performance overlay is tapped.
+    /// Opens the panel on the tab it was last on, as when the performance overlay is tapped.
     @MainActor
-    static func open(on tab: Tab) {
+    static func open() {
         guard Backstage.shared.isEnabled else { return }
-        UserDefaults.standard.set(tab.rawValue, forKey: tabKey)
         Backstage.shared.open()
         #if os(macOS)
         // The panel may be open already, behind other windows.

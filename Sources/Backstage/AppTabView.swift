@@ -75,6 +75,12 @@ struct AppTabView: View {
             if backstage.environment == .testFlight {
                 Section {
                     Button("Lock Backstage", systemImage: "lock", role: .destructive) { confirmsLock = true }
+                        .confirmationDialog("Lock Backstage on this device?", isPresented: $confirmsLock, titleVisibility: .visible) {
+                            Button("Lock", role: .destructive) {
+                                backstage.lock()
+                                backstage.isPanelPresented = false
+                            }
+                        }
                 } footer: {
                     Text("Locking stops recording on this device and forgets what was recorded. The passphrase unlocks it again.")
                 }
@@ -82,12 +88,6 @@ struct AppTabView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("App")
-        .confirmationDialog("Lock Backstage on this device?", isPresented: $confirmsLock) {
-            Button("Lock", role: .destructive) {
-                backstage.lock()
-                backstage.isPanelPresented = false
-            }
-        }
     }
 
     private static func title(_ environment: RunEnvironment) -> String {

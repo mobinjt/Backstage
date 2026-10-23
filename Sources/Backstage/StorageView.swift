@@ -210,6 +210,13 @@ private struct KeychainView: View {
                     }
                     Button("Show") { confirmsReveal = item }
                 }
+                .confirmationDialog("Show this value?", isPresented: Binding { confirmsReveal == item } set: { if !$0 { confirmsReveal = nil } }, titleVisibility: .visible) {
+                    Button("Show") {
+                        revealed[item.id] = KeychainItems.value(of: item) ?? "(no value)"
+                    }
+                } message: {
+                    Text("It may be a token or a password. Anyone looking at the screen can see it.")
+                }
             }
         }
         .overlay {
@@ -218,13 +225,6 @@ private struct KeychainView: View {
             }
         }
         .navigationTitle("Keychain")
-        .confirmationDialog("Show this value?", isPresented: Binding { confirmsReveal != nil } set: { if !$0 { confirmsReveal = nil } }, presenting: confirmsReveal) { item in
-            Button("Show") {
-                revealed[item.id] = KeychainItems.value(of: item) ?? "(no value)"
-            }
-        } message: { _ in
-            Text("It may be a token or a password. Anyone looking at the screen can see it.")
-        }
         .onAppear(perform: load)
     }
 

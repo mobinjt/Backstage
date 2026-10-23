@@ -157,13 +157,14 @@ struct NetworkListView: View {
                 } label: {
                     Label("Options", systemImage: thisLaunchOnly || host != nil || method != nil ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                 }
+                // On the menu Clear is in, so the question appears there, not in a corner.
+                .confirmationDialog("Clear everything recorded?", isPresented: $confirmsClear, titleVisibility: .visible) {
+                    Button("Clear", role: .destructive) { NetworkRecorder.shared.clear() }
+                }
             }
         }
         .sheet(isPresented: $showsSimulation) {
             NavigationStack { SimulationView() }
-        }
-        .confirmationDialog("Clear everything recorded?", isPresented: $confirmsClear) {
-            Button("Clear", role: .destructive) { NetworkRecorder.shared.clear() }
         }
         .fileExporter(isPresented: Binding { export != nil } set: { if !$0 { export = nil } }, document: export, contentType: export?.contentType ?? .json, defaultFilename: export?.name) { _ in
             export = nil

@@ -39,7 +39,7 @@ struct PerformanceOverlayView: View {
         .environment(\.colorScheme, .dark)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Performance")
-        .accessibilityHint("Opens the logs")
+        .accessibilityHint("Opens Backstage")
         .accessibilityAddTraits(.isButton)
     }
 
@@ -65,8 +65,8 @@ struct PerformanceOverlayView: View {
 }
 
 #if os(iOS)
-/// The overlay on iPhone and iPad: dragged anywhere, kept where it was left; a tap opens the
-/// Logs tab, and a long press offers to open Backstage or hide the overlay.
+/// The overlay on iPhone and iPad: dragged anywhere, kept where it was left; a tap opens
+/// Backstage on the tab it was last on, and a long press offers to open it or hide the overlay.
 struct DraggablePerformanceOverlay: View {
     let reportFrame: (CGRect) -> Void
     @AppStorage("Backstage.overlay.x") private var x = 0.8
@@ -83,7 +83,7 @@ struct DraggablePerformanceOverlay: View {
                     reportFrame(frame)
                 }
                 .position(position(in: proxy.size))
-                .onTapGesture { PanelView.open(on: .logs) }
+                .onTapGesture { PanelView.open() }
                 .gesture(
                     DragGesture()
                         .onChanged { dragOffset = $0.translation }
