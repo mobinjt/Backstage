@@ -75,7 +75,7 @@ struct ServerStrip: View {
 
     var body: some View {
         let chosen = registry.serverSettings.compactMap { setting -> String? in
-            guard let url = Backstage.server(for: setting.key) else { return nil }
+            guard let url = registry.serverInUse(for: setting.key) else { return nil }
             return setting.servers.first { $0.url == url }?.name ?? url.host() ?? url.absoluteString
         }
         if !chosen.isEmpty {

@@ -78,6 +78,41 @@ tap Version seven times, shake, or press ⌃⌥⌘D. Its TestFlight passphrase i
    recording protocol to every new `.default` and `.ephemeral` configuration, only while Backstage
    is on).
 
+6. Fill the App tab. Backstage shows the build and the device by itself; the rest comes from the
+   app, through `Backstage.shared.registry`, right after `start(_:)`:
+
+   ```swift
+   let registry = Backstage.shared.registry
+
+   // A server switch: the first server is the app's own.
+   registry.addServers(key: "api", servers: [
+       .init("Live", url: URL(string: "https://api.example.com")!),
+       .init("Staging", url: URL(string: "https://staging.example.com")!)
+   ])
+
+   // Lines of information, read each time the tab is shown. `group` names the section.
+   registry.addInfo("User ID", group: "Account") { session.userID }
+
+   // Switches and buttons.
+   registry.addSwitch("Use mock data", key: "mockData", footnote: "Answers without the server.")
+   registry.addAction("Sign out", group: "Account", isDestructive: true) { await session.signOut() }
+   ```
+
+   The app reads the choices itself. Read the server once at launch, before making its client;
+   the switch can be read any time:
+
+   ```swift
+   let baseURL = Backstage.server(for: "api") ?? URL(string: "https://api.example.com")!
+   if Backstage.isOn("mockData") { … }
+   ```
+
+   Both answer "nothing chosen" in App Store builds and while Backstage is off, so the app falls
+   back to its own server and behaviour. A server chosen in the panel is used from the next
+   launch: the tab says so until the app is reopened, and a strip at the top of the screen then
+   shows the server while it isn't the app's own. "Other address" takes any address, such as a
+   server on the Mac (`192.168.1.10:8080`; http is assumed). See
+   [the example app](Example/BackstageExample/BackstageExampleApp.swift) for each kind.
+
 ## What's in the panel
 
 - **Network.** Every HTTP call: method, URL, status, timing, headers and bodies (cut at 1 MB),
@@ -90,14 +125,12 @@ tap Version seven times, shake, or press ⌃⌥⌘D. Its TestFlight passphrase i
 - **Logs.** This launch's `Logger` and `NSLog` messages, read with `OSLogStore`, filtered by level
   and category. Only the app's own code is shown (its executable, the packages linked into it and
   its frameworks) unless **App's Messages Only** is turned off to see the system's messages too.
-- **App.** Where it runs, the build, the device, and what the app registers through
-  `Backstage.shared.registry`:
-  - `addServers(key:servers:)`: a server switch. The app reads the choice with
-    `Backstage.server(for:)` when it starts. A strip at the top of the screen shows a server
-    that isn't the app's own.
+- **App.** Where it runs, the build and the device, then what the app adds (step 6 above):
+  - `addServers(key:servers:)`: a server switch, read with `Backstage.server(for:)`.
   - `addInfo(_:group:value:)`: lines of information, such as IDs.
+  - `addSwitch(_:key:group:footnote:)`: switches, read with `Backstage.isOn(_:)`.
   - `addAction(_:group:isDestructive:perform:)`: buttons.
-  - `addSwitch(_:key:group:footnote:)`: switches the app reads with `Backstage.isOn(_:)`.
+  - **Lock Backstage**, in TestFlight builds.
 - **Storage.** The app's UserDefaults (edit, delete), Keychain items (show a value after
   confirming, delete) and files (browse, share, delete).
 - **Performance.** A floating overlay with frame rate, dropped frames, memory and CPU, and a

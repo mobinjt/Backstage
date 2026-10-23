@@ -55,13 +55,17 @@ public final class Registry {
     public private(set) var info: [Info] = []
     public private(set) var actions: [Action] = []
     public private(set) var switches: [Switch] = []
+    /// The server each setting used when it was added at launch; `nil` for the app's own.
+    private var serversInUse: [String: URL] = [:]
 
     nonisolated init() {}
 
     // MARK: Adding
 
     /// Adds a server switch. The app reads the choice with `Backstage.server(for:)` when it starts.
+    /// Call it at launch too: what's chosen then is taken as the server this launch uses.
     public func addServers(key: String, title: String = "Server", servers: [Server], allowsCustomURL: Bool = true) {
+        serversInUse[key] = Backstage.server(for: key)
         serverSettings.removeAll { $0.key == key }
         serverSettings.append(ServerSetting(key: key, title: title, servers: servers, allowsCustomURL: allowsCustomURL))
     }
@@ -91,8 +95,15 @@ public final class Registry {
         UserDefaults.standard.string(forKey: Self.serverKey(key)).flatMap(URL.init(string:))
     }
 
+    /// Chooses the server for the next launch; `nil` for the app's own.
     public func selectServer(_ url: URL?, for key: String) {
         UserDefaults.standard.set(url?.absoluteString, forKey: Self.serverKey(key))
+    }
+
+    /// The server this launch uses for a setting, or `nil` for the app's own. A choice made since
+    /// takes effect when the app is reopened.
+    public func serverInUse(for key: String) -> URL? {
+        serversInUse[key]
     }
 
     public func isOn(_ key: String) -> Bool {
