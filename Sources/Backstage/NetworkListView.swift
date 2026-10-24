@@ -9,6 +9,8 @@ final class NetworkModel {
     static let shared = NetworkModel()
 
     private(set) var transactions: [NetworkTransaction] = []
+    /// Goes up with each refresh: cheaper to watch than the calls themselves.
+    private(set) var revision = 0
     @ObservationIgnored private var watching: Task<Void, Never>?
 
     func watch() {
@@ -21,6 +23,7 @@ final class NetworkModel {
                 // At most a few refreshes a second, however busy the network is.
                 try? await Task.sleep(for: .milliseconds(250))
                 self?.transactions = NetworkRecorder.shared.transactions
+                self?.revision += 1
             }
         }
     }
@@ -68,7 +71,7 @@ struct NetworkListView: View {
         }
     }
 
-    private var shown: [NetworkTransaction] {
+    private func shown(from matching: [NetworkTransaction]) -> [NetworkTransaction] {
         guard !statuses.isEmpty else { return matching }
         return matching.filter { transaction in
             StatusClass(transaction).map(statuses.contains) ?? false
@@ -87,6 +90,9 @@ struct NetworkListView: View {
     }
 
     var body: some View {
+        // Filtered once each time the list is drawn.
+        let matching = matching
+        let shown = shown(from: matching)
         List {
             if backstage.showsUnlockNote {
                 Section {
@@ -177,12 +183,12 @@ struct NetworkListView: View {
     }
 
     private func exportHAR() {
-        guard let data = try? NetworkExport.har(shown, sensitiveHeaders: sensitiveHeaders) else { return }
+        guard let data = try? NetworkExport.har(shown(from: matching), sensitiveHeaders: sensitiveHeaders) else { return }
         export = ExportFile(data: data, contentType: UTType(filenameExtension: "har") ?? .json, name: "Backstage \(Date.now.formatted(.iso8601)).har")
     }
 
     private func exportJSON() {
-        guard let data = try? NetworkExport.json(shown, sensitiveHeaders: sensitiveHeaders) else { return }
+        guard let data = try? NetworkExport.json(shown(from: matching), sensitiveHeaders: sensitiveHeaders) else { return }
         export = ExportFile(data: data, contentType: .json, name: "Backstage \(Date.now.formatted(.iso8601)).json")
     }
 }

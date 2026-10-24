@@ -65,7 +65,13 @@ struct TransactionDetailView: View {
                         Button("Copy Response Body", systemImage: "doc.on.doc") { copyToClipboard(text) }
                     }
                     if transaction.kind == .http && transaction.isComplete {
-                        Button("Fake This Response", systemImage: "theatermasks") { fakes = transaction }
+                        // A fake made from part of a body would answer with broken data.
+                        if transaction.responseBody?.isTruncated == true {
+                            Button("Can't Fake: Body Not Kept in Full", systemImage: "theatermasks") {}
+                                .disabled(true)
+                        } else {
+                            Button("Fake This Response", systemImage: "theatermasks") { fakes = transaction }
+                        }
                     }
                     Toggle("Show Hidden Headers", systemImage: "eye", isOn: $revealsSensitive)
                 } label: {

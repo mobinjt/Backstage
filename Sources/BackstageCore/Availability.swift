@@ -33,6 +33,17 @@ public enum RunEnvironment: String, Sendable, Codable {
     /// `.xcode`.
     static let isFromXcode = isDebugBuild || isDevelopmentSigned
 
+    /// An install from the App Store carries its receipt at once (TestFlight's is named
+    /// `sandboxReceipt`), so it's known before StoreKit answers. Only on iPhone and iPad: a Mac
+    /// app's receipt has the same name either way.
+    static var hasAppStoreReceipt: Bool {
+        #if os(iOS)
+        FileManager.default.fileExists(atPath: Bundle.main.bundleURL.appending(path: "StoreKit/receipt").path(percentEncoded: false))
+        #else
+        false
+        #endif
+    }
+
     static var isDebugBuild: Bool {
         #if DEBUG || targetEnvironment(simulator)
         true

@@ -1,27 +1,36 @@
 import BackstageCore
 import SwiftUI
 
-/// The app's UserDefaults, Keychain items and files.
-struct StorageView: View {
+/// Links to the app's UserDefaults, Keychain items and files, in the Tools tab.
+struct StorageLinks: View {
     var body: some View {
-        List {
-            NavigationLink {
-                DefaultsView()
-            } label: {
-                Label("UserDefaults", systemImage: "list.bullet.rectangle")
-            }
-            NavigationLink {
-                KeychainView()
-            } label: {
-                Label("Keychain", systemImage: "key")
-            }
-            NavigationLink {
-                FilesView(directory: URL(filePath: NSHomeDirectory()), title: "App Container")
-            } label: {
-                Label("Files", systemImage: "folder")
-            }
+        NavigationLink {
+            DefaultsView()
+        } label: {
+            Label("UserDefaults", systemImage: "list.bullet.rectangle")
         }
-        .navigationTitle("Storage")
+        NavigationLink {
+            KeychainView()
+        } label: {
+            Label("Keychain", systemImage: "key")
+        }
+        NavigationLink {
+            if let container = AppReset.container {
+                FilesView(directory: container, title: "App Container")
+            } else {
+                // A Mac app outside the sandbox: its own folders, not the user's home.
+                List(AppReset.fileLocations, id: \.self) { folder in
+                    NavigationLink {
+                        FilesView(directory: folder, title: folder.lastPathComponent)
+                    } label: {
+                        Label(folder.path(percentEncoded: false), systemImage: "folder")
+                    }
+                }
+                .navigationTitle("Files")
+            }
+        } label: {
+            Label("Files", systemImage: "folder")
+        }
     }
 }
 
@@ -239,6 +248,7 @@ private struct FilesView: View {
     let directory: URL
     let title: String
     @State private var entries: [FileEntry] = []
+    @State private var deleting: FileEntry?
 
     struct FileEntry: Identifiable {
         let url: URL
@@ -279,14 +289,24 @@ private struct FilesView: View {
             }
         }
         .navigationTitle(title)
+        .confirmationDialog(
+            deleting.map { "Delete \($0.url.lastPathComponent)?" } ?? "",
+            isPresented: Binding { deleting != nil } set: { if !$0 { deleting = nil } },
+            titleVisibility: .visible,
+            presenting: deleting
+        ) { entry in
+            Button("Delete", role: .destructive) {
+                try? FileManager.default.removeItem(at: entry.url)
+                load()
+            }
+        } message: { entry in
+            Text(entry.isDirectory ? "The folder and everything in it." : "The file can't be brought back.")
+        }
         .onAppear(perform: load)
     }
 
     private func deleteButton(_ entry: FileEntry) -> some View {
-        Button("Delete", role: .destructive) {
-            try? FileManager.default.removeItem(at: entry.url)
-            load()
-        }
+        Button("Delete", role: .destructive) { deleting = entry }
     }
 
     private func load() {

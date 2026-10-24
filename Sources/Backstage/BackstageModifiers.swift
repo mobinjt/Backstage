@@ -15,6 +15,12 @@ extension View {
     public func backstageTrigger(count: Int = 7) -> some View {
         modifier(BackstageTriggerModifier(count: count))
     }
+
+    /// Names this screen in Backstage's timeline each time it appears. UIKit screens are noticed
+    /// on their own; SwiftUI ones need this. Does nothing while Backstage is off.
+    public func backstageScreen(_ name: String) -> some View {
+        onAppear { Backstage.screen(name) }
+    }
 }
 
 private struct BackstageHostModifier: ViewModifier {
@@ -30,6 +36,13 @@ private struct BackstageHostModifier: ViewModifier {
                         .hidden()
                         .accessibilityHidden(true)
                 }
+            }
+            .onChange(of: backstage.isEnabled, initial: true) { _, enabled in
+                // Testing changes go on and off with Backstage.
+                DeviceTools.shared.apply()
+                #if os(iOS)
+                if enabled { ViewControllerWatcher.install() }
+                #endif
             }
             #if os(iOS)
             .background { BackstageWindowInstaller() }
@@ -79,6 +92,7 @@ private struct BackstageTriggerModifier: ViewModifier {
 struct ServerStrip: View {
     @State private var registry = Backstage.shared.registry
     @State private var simulation = SimulationModel.shared
+    @State private var location = LocationModel.shared
 
     var body: some View {
         let chosen = registry.serverSettings.compactMap { setting -> String? in
@@ -94,6 +108,10 @@ struct ServerStrip: View {
             if let summary = simulation.summary {
                 label(summary, color: .orange)
                     .accessibilityLabel("Simulating: \(summary)")
+            }
+            if let place = location.location {
+                label("📍 \(place.name)", color: .orange)
+                    .accessibilityLabel("Location set to \(place.name)")
             }
         }
         .allowsHitTesting(false)

@@ -46,6 +46,7 @@ enum SampleReports {
         }}
       },
       "memoryMetrics": {"peakMemoryUsage": "180,000 kB"},
+      "animationMetrics": {"scrollHitchTimeRatio": "4.2 ms per s"},
       "cpuMetrics": {"cumulativeCPUTime": "100 sec"},
       "applicationTimeMetrics": {"cumulativeForegroundTime": "700 sec", "cumulativeBackgroundTime": "40 sec"}
     }
@@ -71,6 +72,7 @@ struct IOSReportTests {
         #expect(summary.appVersion == "1.0")
         #expect(summary.values.first { $0.name == "Typical launch" }?.value == "1000–1010 ms", "The bucket most launches fall in")
         #expect(summary.values.first { $0.name == "Peak memory" }?.value == "180,000 kB")
+        #expect(summary.values.first { $0.name == "Scroll hitches" }?.value == "4.2 ms per s")
         #expect(summary.values.first { $0.name == "On screen" }?.value == "700 sec")
         #expect(summary.begin != nil)
     }

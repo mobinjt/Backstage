@@ -1,9 +1,14 @@
 import Backstage
 import SwiftUI
+import UserNotifications
 
 struct ContentView: View {
     @State private var api = DemoAPI.shared
     @State private var socket = EchoSocket()
+    @State private var demo = DemoState.shared
+    @State private var whereAmI = WhereAmI.shared
+    /// Whether the receipt shown leaks; `nil` while none is shown.
+    @State private var receipt: ReceiptKind?
 
     var body: some View {
         NavigationStack {
@@ -72,6 +77,42 @@ struct ContentView: View {
                 }
 
                 Section {
+                    NavigationLink {
+                        OrderDetailScreen()
+                    } label: {
+                        Label("Open a Named Screen", systemImage: "doc.text")
+                    }
+                    #if os(iOS)
+                    Button("Open a Leaking Screen", systemImage: "drop") { receipt = .leaking }
+                    Button("Open a Well-Behaved Screen", systemImage: "checkmark.seal") { receipt = .wellBehaved }
+                    #endif
+                    Button("Allow Notifications", systemImage: "bell") {
+                        Task { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) }
+                    }
+                    Button {
+                        whereAmI.ask()
+                    } label: {
+                        LabeledContent {
+                            Text(whereAmI.answer ?? "")
+                        } label: {
+                            Label("Where Am I?", systemImage: "location")
+                        }
+                    }
+                    NavigationLink {
+                        MapScreen()
+                    } label: {
+                        Label("Open a Map", systemImage: "map")
+                    }
+                    LabeledContent("Last Notification", value: demo.lastNotification ?? "None")
+                    LabeledContent("Last Link", value: demo.lastLink ?? "None")
+                        .lineLimit(2)
+                } header: {
+                    Text("Try Backstage")
+                } footer: {
+                    Text("Screens show in the Timeline. The leaking screen shows under Performance > Possible Leaks. In Tools: send a test notification, open backstage-example://orders/42 as a deep link, set a location for Where Am I?, change the look, slow animations or show touches, or Report a Bug from any tab.")
+                }
+
+                Section {
                     LabeledContent("Version", value: "1.0 (1)")
                         .backstageTrigger()
                     LabeledContent("Server", value: api.baseURL.host() ?? api.baseURL.absoluteString)
@@ -83,6 +124,12 @@ struct ContentView: View {
             }
             .formStyle(.grouped)
             .navigationTitle("Backstage Example")
+            .onOpenURL { url in demo.lastLink = url.absoluteString }
+            #if os(iOS)
+            .sheet(item: $receipt) { kind in
+                ReceiptScreen(leaks: kind == .leaking)
+            }
+            #endif
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Open Backstage", systemImage: "wrench.and.screwdriver") {

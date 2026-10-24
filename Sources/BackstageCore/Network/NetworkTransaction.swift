@@ -42,6 +42,12 @@ public struct NetworkTransaction: Codable, Sendable, Identifiable, Hashable {
             self.data = data.count > limit ? data.prefix(limit) : data
             size = data.count
         }
+
+        /// The start of a body that was only kept up to the limit as it arrived.
+        init(kept data: Data, size: Int) {
+            self.data = data
+            self.size = size
+        }
     }
 
     public var id: UUID

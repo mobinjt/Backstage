@@ -75,7 +75,7 @@ struct IOSReportsSection: View {
     }
 }
 
-private struct DiagnosticView: View {
+struct DiagnosticView: View {
     let diagnostic: IOSDiagnostic
     let report: IOSReport
 

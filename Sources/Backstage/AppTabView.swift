@@ -90,7 +90,7 @@ struct AppTabView: View {
         .navigationTitle("App")
     }
 
-    private static func title(_ environment: RunEnvironment) -> String {
+    static func title(_ environment: RunEnvironment) -> String {
         switch environment {
         case .xcode: "Xcode"
         case .testFlight: "TestFlight"

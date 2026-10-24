@@ -6,8 +6,7 @@ import Synchronization
 ///
 /// The condition lasts until the app is relaunched; fake responses are kept in a file.
 public final class NetworkSimulator: Sendable {
-    public static let shared = NetworkSimulator(file: URL.applicationSupportDirectory
-        .appending(path: (Bundle.main.bundleIdentifier ?? "app") + "/Backstage/Fakes.json"))
+    public static let shared = NetworkSimulator(file: Folders.support.appending(path: "Fakes.json"))
 
     /// How the network behaves.
     public struct Condition: Codable, Sendable, Hashable {
@@ -95,7 +94,8 @@ public final class NetworkSimulator: Sendable {
             self.delay = delay
         }
 
-        /// A fake that answers like a recorded response, ready to be changed.
+        /// A fake that answers like a recorded response, ready to be changed. Its body is what was
+        /// kept, so check `responseBody?.isTruncated` first.
         public init(answering transaction: NetworkTransaction) {
             let url = transaction.url
             var pattern = url?.absoluteString ?? "*"

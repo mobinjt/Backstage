@@ -132,6 +132,16 @@ struct NetworkRecorderTests {
         #expect(loaded.allSatisfy { $0.isComplete })
         #expect(loaded.contains { $0.errorDescription == "The app stopped before this finished." })
     }
+
+    @Test func nothingIsLoadedOnceRecordingStopped() {
+        let (recorder, directory) = makeRecorder()
+        recorder.add(transaction(recorder))
+        recorder.flush()
+        // Such as an App Store build that stopped before the files were read.
+        let nextLaunch = NetworkRecorder(directory: directory)
+        nextLaunch.loadPrevious()
+        #expect(nextLaunch.transactions.isEmpty)
+    }
 }
 
 struct ExportTests {
@@ -165,6 +175,19 @@ struct ExportTests {
         let headers = try #require((entry["request"] as? [String: Any])?["headers"] as? [[String: String]])
         #expect(headers.contains { $0["name"] == "Authorization" && $0["value"] == "<hidden>" })
     }
+
+    @Test func sensitiveHeadersAreHiddenHoweverTheyreWritten() throws {
+        var configuration = BackstageConfiguration(passphraseSalt: "", passphraseHash: "")
+        configuration.sensitiveHeaders.insert("X-Auth-Token")
+        #expect(configuration.sensitiveHeaders.contains("x-auth-token"))
+        var call = transaction
+        call.requestHeaders["x-auth-TOKEN"] = "t0ken"
+        let curl = try #require(NetworkExport.curl(call, sensitiveHeaders: ["X-Auth-Token"]))
+        #expect(!curl.contains("t0ken"))
+        #expect(call.hidingHeaders(["X-AUTH-TOKEN"]).requestHeaders["x-auth-TOKEN"] == "<hidden>")
+        let har = String(decoding: try NetworkExport.har([call], sensitiveHeaders: ["X-Auth-Token"]), as: UTF8.self)
+        #expect(!har.contains("t0ken"))
+    }
 }
 
 struct StatusAndLogTests {
@@ -183,6 +206,38 @@ struct StatusAndLogTests {
         #expect(!LogReader.isFromApp(sender: "UIKitCore", subsystem: "com.apple.UIKit", appImages: app))
         #expect(!LogReader.isFromApp(sender: "Security", subsystem: "", appImages: app))
         #expect(!LogReader.isFromApp(sender: "Foundation", subsystem: "com.apple.foundation", appImages: app))
+    }
+}
+
+/// Asks for a password, then answers with the user it was given; 401 without one.
+final class PasswordStubProtocol: URLProtocol, URLAuthenticationChallengeSender, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let space = URLProtectionSpace(host: "example.com", port: 443, protocol: "https", realm: "Staff", authenticationMethod: NSURLAuthenticationMethodHTTPBasic)
+        client?.urlProtocol(self, didReceive: URLAuthenticationChallenge(protectionSpace: space, proposedCredential: nil, previousFailureCount: 0, failureResponse: nil, error: nil, sender: self))
+    }
+
+    override func stopLoading() {}
+
+    private func answer(_ status: Int, _ body: String) {
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    func use(_ credential: URLCredential, for challenge: URLAuthenticationChallenge) { answer(200, credential.user ?? "") }
+    func continueWithoutCredential(for challenge: URLAuthenticationChallenge) { answer(401, "") }
+    func cancel(_ challenge: URLAuthenticationChallenge) { answer(401, "") }
+    func performDefaultHandling(for challenge: URLAuthenticationChallenge) { answer(401, "") }
+}
+
+/// Gives a password when asked, as an app's session delegate does.
+final class PasswordGiver: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        (.useCredential, URLCredential(user: "sara", password: "secret", persistence: .none))
     }
 }
 
@@ -214,40 +269,133 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
     override func stopLoading() {}
 }
 
+struct LaunchTests {
+    @Test func settingsApplyAtLaunchOnlyWhereBackstageMayBeOn() {
+        #expect(Backstage.isEnabledAtLaunch(isFromXcode: true, isUnlocked: false, hasAppStoreReceipt: false))
+        #expect(Backstage.isEnabledAtLaunch(isFromXcode: false, isUnlocked: true, hasAppStoreReceipt: false), "An unlocked TestFlight device")
+        #expect(!Backstage.isEnabledAtLaunch(isFromXcode: false, isUnlocked: true, hasAppStoreReceipt: true), "Unlocked once, now the App Store version")
+        #expect(!Backstage.isEnabledAtLaunch(isFromXcode: false, isUnlocked: false, hasAppStoreReceipt: false))
+    }
+}
+
+extension SharedStateTests {
+    @MainActor
+    @Suite struct AppStoreTests {
+        @Test func theAppStoreVersionForgetsATestFlightUnlock() {
+            let name = "backstage-tests-\(UUID().uuidString)"
+            let store = UnlockStore(service: "BackstageTests", account: name)
+            store.setUnlocked(true)
+            defer { store.setUnlocked(false) }
+            let backstage = Backstage(unlockStore: store, defaults: UserDefaults(suiteName: name)!)
+            #expect(backstage.isUnlocked)
+
+            backstage.settle(.appStore)
+            #expect(!backstage.isEnabled)
+            #expect(!store.isUnlocked, "The next launch doesn't act on the TestFlight settings")
+        }
+    }
+}
+
+/// Suites that change what the whole process shares (the recorder, the simulator, whether
+/// Backstage is on, the location and time zone), run one at a time so none sees another's.
 @Suite(.serialized)
-struct RecordingURLProtocolTests {
-    @Test func requestsPassThroughAndAreRecorded() async throws {
+struct SharedStateTests {}
+
+extension SharedStateTests {
+    @Suite struct RecordingURLProtocolTests {
+        @Test func requestsPassThroughAndAreRecorded() async throws {
+            let forwarding = URLSessionConfiguration.ephemeral
+            forwarding.protocolClasses = [StubProtocol.self]
+            RecordingURLProtocol.forwardingConfiguration = forwarding
+            RecordingURLProtocol.resetForwarder()
+            NetworkRecorder.shared.setRecording(true, purge: true)
+            defer { NetworkRecorder.shared.setRecording(false, purge: true) }
+
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.httpAdditionalHeaders = ["X-App-Build": "ios 42"]
+            Backstage.record(configuration)
+            let session = URLSession(configuration: configuration)
+            var request = URLRequest(url: URL(string: "https://example.com/v1/ping")!)
+            request.httpMethod = "POST"
+            request.httpBody = Data(#"{"ping":true}"#.utf8)
+            let (data, response) = try await session.data(for: request)
+
+            #expect(String(decoding: data, as: UTF8.self) == #"{"pong":true}"#)
+            #expect((response as? HTTPURLResponse)?.statusCode == 200)
+            let sent = try #require(StubProtocol.seen.withLock { $0.last })
+            #expect(sent.value(forHTTPHeaderField: "X-App-Build") == "ios 42", "The session's own headers reach the server")
+
+            let recorded = try #require(NetworkRecorder.shared.transactions.first)
+            #expect(recorded.method == "POST")
+            #expect(recorded.statusCode == 200)
+            #expect(recorded.requestBody?.data == Data(#"{"ping":true}"#.utf8))
+            #expect(recorded.responseBody?.data == data)
+            #expect(recorded.requestHeaders["X-App-Build"] == "ios 42")
+            #expect(recorded.isComplete)
+        }
+
+        @Test func redirectsAreRecordedWithTheirStatus() async throws {
+            let forwarding = URLSessionConfiguration.ephemeral
+            forwarding.protocolClasses = [StubProtocol.self]
+            RecordingURLProtocol.forwardingConfiguration = forwarding
+            RecordingURLProtocol.resetForwarder()
+            NetworkRecorder.shared.setRecording(true, purge: true)
+            defer { NetworkRecorder.shared.setRecording(false, purge: true) }
+
+            let configuration = URLSessionConfiguration.ephemeral
+            Backstage.record(configuration)
+            let (data, response) = try await URLSession(configuration: configuration).data(from: URL(string: "https://example.com/old")!)
+
+            #expect(String(decoding: data, as: UTF8.self) == #"{"pong":true}"#)
+            #expect(response.url?.path() == "/v1/ping")
+            let recorded = NetworkRecorder.shared.transactions
+            #expect(recorded.map { $0.url?.path() } == ["/v1/ping", "/old"], "The redirect and the request it led to, newest first")
+            #expect(recorded.last?.statusCode == 302)
+            #expect(recorded.last?.note == "Redirected to https://example.com/v1/ping")
+            #expect(recorded.first?.statusCode == 200)
+        }
+
+        @Test func theAppsSessionAnswersTheServersChallenge() async throws {
         let forwarding = URLSessionConfiguration.ephemeral
-        forwarding.protocolClasses = [StubProtocol.self]
+        forwarding.protocolClasses = [PasswordStubProtocol.self]
         RecordingURLProtocol.forwardingConfiguration = forwarding
         RecordingURLProtocol.resetForwarder()
         NetworkRecorder.shared.setRecording(true, purge: true)
         defer { NetworkRecorder.shared.setRecording(false, purge: true) }
 
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.httpAdditionalHeaders = ["X-App-Build": "ios 42"]
         Backstage.record(configuration)
-        let session = URLSession(configuration: configuration)
-        var request = URLRequest(url: URL(string: "https://example.com/v1/ping")!)
-        request.httpMethod = "POST"
-        request.httpBody = Data(#"{"ping":true}"#.utf8)
-        let (data, response) = try await session.data(for: request)
-
-        #expect(String(decoding: data, as: UTF8.self) == #"{"pong":true}"#)
+        let request = URLRequest(url: URL(string: "https://example.com/staff")!)
+        let (data, response) = try await URLSession(configuration: configuration).data(for: request, delegate: PasswordGiver())
         #expect((response as? HTTPURLResponse)?.statusCode == 200)
-        let sent = try #require(StubProtocol.seen.withLock { $0.last })
-        #expect(sent.value(forHTTPHeaderField: "X-App-Build") == "ios 42", "The session's own headers reach the server")
-
-        let recorded = try #require(NetworkRecorder.shared.transactions.first)
-        #expect(recorded.method == "POST")
-        #expect(recorded.statusCode == 200)
-        #expect(recorded.requestBody?.data == Data(#"{"ping":true}"#.utf8))
-        #expect(recorded.responseBody?.data == data)
-        #expect(recorded.requestHeaders["X-App-Build"] == "ios 42")
-        #expect(recorded.isComplete)
+        #expect(String(decoding: data, as: UTF8.self) == "sara", "The password came from the app's own delegate")
+        #expect(NetworkRecorder.shared.transactions.first?.statusCode == 200)
     }
 
-    @Test func redirectsAreRecordedWithTheirStatus() async throws {
+    @Test func aLargeBodyIsKeptOnlyUpToTheLimit() async throws {
+        let forwarding = URLSessionConfiguration.ephemeral
+        forwarding.protocolClasses = [StubProtocol.self]
+        RecordingURLProtocol.forwardingConfiguration = forwarding
+        RecordingURLProtocol.resetForwarder()
+        var limits = NetworkRecorder.Limits()
+        limits.maximumBodySize = 1_000
+        NetworkRecorder.shared.configure(limits)
+        NetworkRecorder.shared.setRecording(true, purge: true)
+        defer {
+            NetworkRecorder.shared.setRecording(false, purge: true)
+            NetworkRecorder.shared.configure(.init())
+        }
+
+        let configuration = URLSessionConfiguration.ephemeral
+        Backstage.record(configuration)
+        let (data, _) = try await URLSession(configuration: configuration).data(from: URL(string: "https://example.com/big")!)
+        #expect(data.count == 20_000, "The app gets all of it")
+        let body = try #require(NetworkRecorder.shared.transactions.first?.responseBody)
+        #expect(body.data.count == 1_000)
+        #expect(body.size == 20_000)
+    }
+
+    @Test func aStreamedBodyIsSentWhole() async throws {
         let forwarding = URLSessionConfiguration.ephemeral
         forwarding.protocolClasses = [StubProtocol.self]
         RecordingURLProtocol.forwardingConfiguration = forwarding
@@ -255,38 +403,47 @@ struct RecordingURLProtocolTests {
         NetworkRecorder.shared.setRecording(true, purge: true)
         defer { NetworkRecorder.shared.setRecording(false, purge: true) }
 
+        // A stream the app is still writing to when the request starts.
+        var input: InputStream?
+        var output: OutputStream?
+        Stream.getBoundStreams(withBufferSize: 1_024, inputStream: &input, outputStream: &output)
+        nonisolated(unsafe) let writer = try #require(output)
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
+            writer.open()
+            let bytes = Array(#"{"upload":true}"#.utf8)
+            _ = writer.write(bytes, maxLength: bytes.count)
+            writer.close()
+        }
+        var request = URLRequest(url: URL(string: "https://example.com/upload")!)
+        request.httpMethod = "POST"
+        request.httpBodyStream = input
+
         let configuration = URLSessionConfiguration.ephemeral
         Backstage.record(configuration)
-        let (data, response) = try await URLSession(configuration: configuration).data(from: URL(string: "https://example.com/old")!)
-
-        #expect(String(decoding: data, as: UTF8.self) == #"{"pong":true}"#)
-        #expect(response.url?.path() == "/v1/ping")
-        let recorded = NetworkRecorder.shared.transactions
-        #expect(recorded.map { $0.url?.path() } == ["/v1/ping", "/old"], "The redirect and the request it led to, newest first")
-        #expect(recorded.last?.statusCode == 302)
-        #expect(recorded.last?.note == "Redirected to https://example.com/v1/ping")
-        #expect(recorded.first?.statusCode == 200)
+        _ = try await URLSession(configuration: configuration).data(for: request)
+        #expect(NetworkRecorder.shared.transactions.first?.requestBody?.data == Data(#"{"upload":true}"#.utf8))
     }
 
     @Test func webSocketsAreLeftAlone() {
-        NetworkRecorder.shared.setRecording(true, purge: true)
-        defer { NetworkRecorder.shared.setRecording(false, purge: true) }
-        let configuration = URLSessionConfiguration.ephemeral
-        Backstage.record(configuration)
-        let session = URLSession(configuration: configuration)
-        defer { session.invalidateAndCancel() }
-        #expect(RecordingURLProtocol.canInit(with: session.dataTask(with: URL(string: "https://example.com/socket")!)))
-        #expect(!RecordingURLProtocol.canInit(with: session.webSocketTask(with: URL(string: "wss://example.com/socket")!)))
-    }
+            NetworkRecorder.shared.setRecording(true, purge: true)
+            defer { NetworkRecorder.shared.setRecording(false, purge: true) }
+            let configuration = URLSessionConfiguration.ephemeral
+            Backstage.record(configuration)
+            let session = URLSession(configuration: configuration)
+            defer { session.invalidateAndCancel() }
+            #expect(RecordingURLProtocol.canInit(with: session.dataTask(with: URL(string: "https://example.com/socket")!)))
+            #expect(!RecordingURLProtocol.canInit(with: session.webSocketTask(with: URL(string: "wss://example.com/socket")!)))
+        }
 
-    @Test func nothingIsTouchedWhileOff() async throws {
-        NetworkRecorder.shared.setRecording(false, purge: true)
-        let configuration = URLSessionConfiguration.ephemeral
-        Backstage.record(configuration)
-        configuration.protocolClasses = (configuration.protocolClasses ?? []) + [StubProtocol.self]
-        let (data, _) = try await URLSession(configuration: configuration).data(from: URL(string: "https://example.com/v1/ping")!)
-        #expect(!data.isEmpty)
-        #expect(NetworkRecorder.shared.transactions.isEmpty)
+        @Test func nothingIsTouchedWhileOff() async throws {
+            NetworkRecorder.shared.setRecording(false, purge: true)
+            let configuration = URLSessionConfiguration.ephemeral
+            Backstage.record(configuration)
+            configuration.protocolClasses = (configuration.protocolClasses ?? []) + [StubProtocol.self]
+            let (data, _) = try await URLSession(configuration: configuration).data(from: URL(string: "https://example.com/v1/ping")!)
+            #expect(!data.isEmpty)
+            #expect(NetworkRecorder.shared.transactions.isEmpty)
+        }
     }
 }
 

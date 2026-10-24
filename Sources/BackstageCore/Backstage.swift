@@ -4,8 +4,9 @@ import Synchronization
 
 /// How an app sets up Backstage.
 public struct BackstageConfiguration: Sendable {
-    /// From `swift run backstage-passphrase`: the salt and the hex SHA-256 of the salt followed by
-    /// the passphrase that unlocks TestFlight builds. The passphrase itself is never in the app.
+    /// From `swift run backstage-passphrase`: the salt, and the PBKDF2 hash of the passphrase that
+    /// unlocks TestFlight builds (`pbkdf2-sha256$<rounds>$<hex>`). The passphrase itself is never
+    /// in the app.
     public var passphraseSalt: String
     public var passphraseHash: String
     /// Also record sessions the app doesn't hand to `Backstage.record(_:)`, such as libraries'
@@ -14,7 +15,9 @@ public struct BackstageConfiguration: Sendable {
     public var recordsAllSessions = false
     /// Headers shown hidden until tapped, and left out of exports unless chosen. Compared without
     /// case.
-    public var sensitiveHeaders: Set<String> = ["authorization", "cookie", "set-cookie", "proxy-authorization", "x-api-key"]
+    public var sensitiveHeaders: Set<String> = ["authorization", "cookie", "set-cookie", "proxy-authorization", "x-api-key"] {
+        didSet { sensitiveHeaders = Set(sensitiveHeaders.map { $0.lowercased() }) }
+    }
     public var limits = NetworkRecorder.Limits()
 
     public init(passphraseSalt: String, passphraseHash: String) {
@@ -75,10 +78,14 @@ public final class Backstage {
     }
 
     /// Whether to act on Backstage's settings at launch, before StoreKit has answered: builds
-    /// installed from Xcode, and devices unlocked earlier. Apps read the chosen server through
-    /// this.
+    /// installed from Xcode, and devices unlocked earlier that aren't running an App Store
+    /// install. Apps read the chosen server through this.
     public nonisolated static var isEnabledAtLaunch: Bool {
-        RunEnvironment.isFromXcode || UnlockStore.standard.isUnlocked
+        isEnabledAtLaunch(isFromXcode: RunEnvironment.isFromXcode, isUnlocked: UnlockStore.standard.isUnlocked, hasAppStoreReceipt: RunEnvironment.hasAppStoreReceipt)
+    }
+
+    nonisolated static func isEnabledAtLaunch(isFromXcode: Bool, isUnlocked: Bool, hasAppStoreReceipt: Bool) -> Bool {
+        isFromXcode || (isUnlocked && !hasAppStoreReceipt)
     }
 
     /// Whether Backstage's settings apply right now, from any thread.
@@ -86,7 +93,7 @@ public final class Backstage {
         active.withLock { $0 }
     }
 
-    private nonisolated static let active = Mutex(false)
+    nonisolated static let active = Mutex(false)
 
     // MARK: Starting
 
@@ -100,13 +107,24 @@ public final class Backstage {
             turnOn()
         }
         Task {
-            let environment = await RunEnvironment.detect()
-            self.environment = environment
-            if Self.isEnabled(environment: environment, isUnlocked: isUnlocked) {
-                turnOn()
-            } else {
-                turnOff(purge: true)
-            }
+            settle(await RunEnvironment.detect())
+        }
+    }
+
+    /// Acts on where the app runs, once StoreKit has said.
+    func settle(_ environment: RunEnvironment) {
+        self.environment = environment
+        if Self.isEnabled(environment: environment, isUnlocked: isUnlocked) {
+            turnOn()
+            return
+        }
+        turnOff(purge: true)
+        // A TestFlight device that installed the App Store version keeps the Keychain and the
+        // app's settings. Forgetting the unlock keeps that launch's choices, such as staging,
+        // from applying to the next one.
+        if environment == .appStore && isUnlocked {
+            unlockStore.setUnlocked(false)
+            isUnlocked = false
         }
     }
 
@@ -125,6 +143,11 @@ public final class Backstage {
         #if canImport(MetricKit)
         IOSReportListener.shared.start()
         #endif
+        NotificationCapture.install()
+        if let location = LocationSimulator.shared.location {
+            LocationCapture.install()
+            TimeZoneOverride.apply(location.timeZone)
+        }
     }
 
     private func turnOff(purge: Bool) {
@@ -133,8 +156,10 @@ public final class Backstage {
         #if canImport(MetricKit)
         IOSReportListener.shared.stop()
         #endif
+        TimeZoneOverride.apply(nil)
         if purge {
             IOSReportStore.shared.clear()
+            AppActivity.clear()
         }
         isPanelPresented = false
     }

@@ -5,7 +5,7 @@ import Synchronization
 /// app's Caches, so what happened before a crash or relaunch is still there. Safe to use from any
 /// thread. It records only while Backstage is on.
 public final class NetworkRecorder: Sendable {
-    public static let shared = NetworkRecorder(directory: URL.cachesDirectory.appending(path: "Backstage/Network", directoryHint: .isDirectory))
+    public static let shared = NetworkRecorder(directory: Folders.caches.appending(path: "Network", directoryHint: .isDirectory))
 
     public struct Limits: Sendable {
         /// Transactions kept; older ones are removed.
@@ -240,6 +240,8 @@ public final class NetworkRecorder: Sendable {
             loaded[index].errorDescription = loaded[index].errorDescription ?? "The app stopped before this finished."
         }
         state.withLock { state in
+            // Stopped meanwhile, such as an App Store build forgetting what it recorded.
+            guard state.isRecording else { return }
             var merged = state.transactions
             for transaction in loaded where merged[transaction.id] == nil {
                 merged[transaction.id] = transaction

@@ -113,6 +113,10 @@ extension IOSReport {
         if let hangs = Self.typical(value("applicationResponsivenessMetrics", "histogrammedAppHangTime")) {
             values.append(("Typical hang", hangs))
         }
+        // Time lost to late frames while scrolling, as Xcode's Organizer shows it.
+        if let hitches = value("animationMetrics", "scrollHitchTimeRatio") {
+            values.append(("Scroll hitches", Self.text(hitches)))
+        }
         let named: [(String, [String])] = [
             ("Peak memory", ["memoryMetrics", "peakMemoryUsage"]),
             ("CPU time", ["cpuMetrics", "cumulativeCPUTime"]),
@@ -200,11 +204,13 @@ extension IOSReport {
         }
     }
 
-    /// MetricKit writes dates like "2026-10-22 23:59:00" in local time.
+    /// MetricKit writes dates like "2026-10-22 23:59:00" in the device's local time, also while
+    /// a fake location moves the app into another zone.
     static func date(_ value: Any?) -> Date? {
         guard let text = value as? String else { return nil }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZoneOverride.deviceTimeZone
         for format in ["yyyy-MM-dd HH:mm:ss Z", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ssZ"] {
             formatter.dateFormat = format
             if let date = formatter.date(from: text) { return date }

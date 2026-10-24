@@ -110,6 +110,7 @@ struct DraggableOverlay<Content: View>: View {
                 )
                 .contextMenu {
                     Button("Open Backstage", systemImage: "wrench.and.screwdriver") { Backstage.shared.open() }
+                    Button("Report a Bug", systemImage: "ladybug") { BugReportModel.shared.start() }
                     Button("Hide Overlay", systemImage: "eye.slash", action: hide)
                 }
         }
@@ -196,6 +197,7 @@ struct PerformanceView: View {
             } footer: {
                 Text("Times the main thread didn't respond for more than \(Int(PerformanceMonitor.hangThreshold * 1_000)) ms.")
             }
+            LeaksSection()
             IOSReportsSection()
         }
         .formStyle(.grouped)

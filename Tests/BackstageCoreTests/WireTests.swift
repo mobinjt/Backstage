@@ -60,7 +60,7 @@ final class RawHTTPServer: @unchecked Sendable {
 
 /// What actually goes over the wire, in the same serialized suite as the other recording tests:
 /// they all change the shared forwarding session and recorder.
-extension RecordingURLProtocolTests {
+extension SharedStateTests.RecordingURLProtocolTests {
     @Test func aRecordedRequestsBodyReachesTheServer() async throws {
         let server = try RawHTTPServer()
         try await server.start()

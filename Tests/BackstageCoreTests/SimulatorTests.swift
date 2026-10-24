@@ -78,7 +78,7 @@ struct NetworkSimulatorTests {
 
 /// Fakes and conditions through the recording protocol, in the serialized suite: they change the
 /// shared forwarding session, recorder and simulator.
-extension RecordingURLProtocolTests {
+extension SharedStateTests.RecordingURLProtocolTests {
     private func recordedSession() -> URLSession {
         let forwarding = URLSessionConfiguration.ephemeral
         forwarding.protocolClasses = [StubProtocol.self]

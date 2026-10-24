@@ -24,6 +24,8 @@ final class BackstageWindowController {
         if visible {
             guard let scene else { return }
             if window == nil || window?.windowScene !== scene {
+                // The app moved to another scene: the old window goes.
+                window?.isHidden = true
                 let window = PassthroughWindow(windowScene: scene)
                 window.windowLevel = .alert + 1
                 window.backgroundColor = .clear
@@ -139,6 +141,8 @@ private struct OverlayRoot: View {
                         }
                     }
                 }
+                // Above everything, never in the way of a touch.
+                TouchIndicatorsView()
                 if backstage.alertsOnNetworkProblems {
                     // Above the home indicator; touches pass through to the app.
                     VStack {

@@ -1,5 +1,6 @@
 import Backstage
 import SwiftUI
+import UserNotifications
 
 @main
 struct BackstageExampleApp: App {
@@ -41,4 +42,7 @@ private func setUpBackstage() {
     registry.addAction("Sign out", group: "Account", isDestructive: true) { DemoData.signOut() }
 
     DemoData.seedIfNeeded()
+
+    // The app's own notification handling. Backstage notes the notifications on its own.
+    UNUserNotificationCenter.current().delegate = NotificationHandler.shared
 }

@@ -210,7 +210,7 @@ struct NetworkAlertsView: View {
             }
         }
         .animation(.spring(duration: 0.35), value: shown.map(\.id))
-        .onChange(of: model.transactions) { _, _ in announce() }
+        .onChange(of: model.revision) { _, _ in announce() }
         .task {
             model.watch()
             since = .now

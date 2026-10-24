@@ -1,13 +1,15 @@
 import BackstageCore
 import SwiftUI
 
-/// The panel: network, logs, the app's settings and actions, storage and performance.
+/// The panel: network, the timeline, the app's settings and actions, tools and performance.
 struct PanelView: View {
     @State private var backstage = Backstage.shared
+    @State private var bugReport = BugReportModel.shared
     @AppStorage(Self.tabKey) private var tab = Tab.network
 
+    /// Kept under their old names, so the tab chosen before still opens.
     enum Tab: String {
-        case network, logs, app, storage, performance
+        case network, timeline = "logs", app, tools = "storage", performance
     }
 
     private static let tabKey = "Backstage.panelTab"
@@ -28,18 +30,22 @@ struct PanelView: View {
             screen(NetworkListView())
                 .tabItem { Label("Network", systemImage: "network") }
                 .tag(Tab.network)
-            screen(LogsView())
-                .tabItem { Label("Logs", systemImage: "text.alignleft") }
-                .tag(Tab.logs)
+            screen(TimelineView())
+                .tabItem { Label("Timeline", systemImage: "clock") }
+                .tag(Tab.timeline)
             screen(AppTabView())
                 .tabItem { Label("App", systemImage: "slider.horizontal.3") }
                 .tag(Tab.app)
-            screen(StorageView())
-                .tabItem { Label("Storage", systemImage: "externaldrive") }
-                .tag(Tab.storage)
+            screen(ToolsView())
+                .tabItem { Label("Tools", systemImage: "wrench.and.screwdriver") }
+                .tag(Tab.tools)
             screen(PerformanceView())
                 .tabItem { Label("Performance", systemImage: "gauge.with.dots.needle.67percent") }
                 .tag(Tab.performance)
+        }
+        .sheet(isPresented: $bugReport.isPresented) {
+            BugReportView()
+                .tint(BackstageStyle.accent)
         }
     }
 
@@ -53,6 +59,11 @@ struct PanelView: View {
                     }
                 }
                 #endif
+                .toolbar {
+                    ToolbarItem(placement: .navigation) {
+                        Button("Report a Bug", systemImage: "ladybug") { bugReport.start() }
+                    }
+                }
         }
     }
 }

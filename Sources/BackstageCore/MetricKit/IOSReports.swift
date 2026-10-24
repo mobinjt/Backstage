@@ -38,7 +38,7 @@ public struct IOSReport: Codable, Sendable, Identifiable, Hashable {
 /// Keeps the reports iOS delivers, one file each in the app's Caches, for 30 days. Safe to use
 /// from any thread.
 public final class IOSReportStore: Sendable {
-    public static let shared = IOSReportStore(directory: URL.cachesDirectory.appending(path: "Backstage/iOSReports", directoryHint: .isDirectory))
+    public static let shared = IOSReportStore(directory: Folders.caches.appending(path: "iOSReports", directoryHint: .isDirectory))
 
     /// Reports older than this are removed.
     public static let keptFor: TimeInterval = 30 * 24 * 60 * 60
@@ -55,7 +55,7 @@ public final class IOSReportStore: Sendable {
     public func add(_ kind: IOSReport.Kind, json: Data, received: Date = .now) {
         let report = IOSReport(kind: kind, json: json, received: received)
         let file = directory.appending(path: "\(report.id).json")
-        guard !FileManager.default.fileExists(atPath: file.path()) else { return }
+        guard !FileManager.default.fileExists(atPath: file.path(percentEncoded: false)) else { return }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try? JSONEncoder().encode(report).write(to: file, options: .atomic)
         changed()

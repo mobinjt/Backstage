@@ -10,9 +10,11 @@ import Synchronization
 public final class RecordingURLProtocol: URLProtocol, @unchecked Sendable {
     private static let handledKey = "Backstage.RecordingURLProtocol.handled"
 
-    /// The session requests are sent on. Tests replace its configuration.
+    /// The session requests are sent on. Like `URLSession.shared`, it uses the shared cookies,
+    /// cache and credentials, so signing in with a cookie works as without Backstage. Tests
+    /// replace its configuration.
     nonisolated(unsafe) static var forwardingConfiguration: URLSessionConfiguration = {
-        let configuration = URLSessionConfiguration.ephemeral
+        let configuration = URLSessionConfiguration.default
         configuration.protocolClasses = (configuration.protocolClasses ?? []).filter { $0 != RecordingURLProtocol.self }
         return configuration
     }()
@@ -42,13 +44,17 @@ public final class RecordingURLProtocol: URLProtocol, @unchecked Sendable {
     /// Events reach the app in order through here, held back for a simulated delay or speed.
     private let deliveries = DispatchQueue(label: "Backstage.RecordingURLProtocol.deliveries")
     private let pacing = Mutex(Pacing())
+    /// The forwarding session's answer to a server challenge, waiting for the app's.
+    private let pendingChallenge = Mutex<(@Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void)?>(nil)
 
     private struct Loading {
         /// `nil` for a fake or a simulated failure, which never reach the server.
         let task: URLSessionDataTask?
         let transactionID: UUID
         var response: URLResponse?
+        /// Kept up to the recorder's limit; the rest only reaches the app.
         var body = Data()
+        var bodySize = 0
         var isFinished = false
     }
 
@@ -136,6 +142,7 @@ public final class RecordingURLProtocol: URLProtocol, @unchecked Sendable {
     override public func stopLoading() {
         let task = loading.withLock { $0?.task }
         pacing.withLock { $0.isStopped = true }
+        answerChallenge(.cancelAuthenticationChallenge, nil)
         task?.cancel()
         // Events still held back won't reach the app now; the request ends here.
         finish(error: URLError(.cancelled), redirectedTo: nil)
@@ -210,7 +217,9 @@ public final class RecordingURLProtocol: URLProtocol, @unchecked Sendable {
         defer { stream.close() }
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 16_384)
-        while stream.hasBytesAvailable {
+        // Until the end (0) or an error (-1). A stream the app is still writing to, as for a
+        // streamed upload, waits for the rest rather than looking empty.
+        while true {
             let count = stream.read(&buffer, maxLength: buffer.count)
             guard count > 0 else { break }
             data.append(buffer, count: count)
@@ -234,12 +243,35 @@ public final class RecordingURLProtocol: URLProtocol, @unchecked Sendable {
     }
 
     fileprivate func didReceive(_ data: Data) {
+        let limit = recorder.limits.maximumBodySize
         for piece in pieces(of: data) {
             deliver(bytes: piece.count) { [self] in
-                loading.withLock { $0?.body.append(piece) }
+                loading.withLock { loading in
+                    guard var current = loading else { return }
+                    current.bodySize += piece.count
+                    let room = limit - current.body.count
+                    if room > 0 { current.body.append(piece.prefix(room)) }
+                    loading = current
+                }
                 onClientThread { [self] in client?.urlProtocol(self, didLoad: piece) }
             }
         }
+    }
+
+    /// A server challenge, such as its certificate to check or a password to give, goes to the
+    /// app's own session, whose delegate answers as if it talked to the server itself.
+    fileprivate func didReceive(_ challenge: URLAuthenticationChallenge, completion: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        pendingChallenge.withLock { $0 = completion }
+        let forwarded = URLAuthenticationChallenge(authenticationChallenge: challenge, sender: self)
+        onClientThread { [self] in client?.urlProtocol(self, didReceive: forwarded) }
+    }
+
+    private func answerChallenge(_ disposition: URLSession.AuthChallengeDisposition, _ credential: URLCredential?) {
+        let completion = pendingChallenge.withLock { pending in
+            defer { pending = nil }
+            return pending
+        }
+        completion?(disposition, credential)
     }
 
     fileprivate func wasRedirected(to request: URLRequest, by response: HTTPURLResponse) {
@@ -278,7 +310,6 @@ public final class RecordingURLProtocol: URLProtocol, @unchecked Sendable {
             return current
         }
         guard let loading else { return }
-        let limit = recorder.limits.maximumBodySize
         recorder.update(loading.transactionID) { transaction in
             transaction.endDate = .now
             if let response = loading.response as? HTTPURLResponse {
@@ -287,8 +318,8 @@ public final class RecordingURLProtocol: URLProtocol, @unchecked Sendable {
                     headers[String(describing: field.key)] = String(describing: field.value)
                 }
             }
-            if !loading.body.isEmpty {
-                transaction.responseBody = NetworkTransaction.Body(loading.body, limit: limit)
+            if loading.bodySize > 0 {
+                transaction.responseBody = NetworkTransaction.Body(kept: loading.body, size: loading.bodySize)
             }
             if let error {
                 transaction.errorDescription = (error as NSError).localizedDescription
@@ -296,6 +327,29 @@ public final class RecordingURLProtocol: URLProtocol, @unchecked Sendable {
                 transaction.note = "Redirected to \(redirectedTo.absoluteString)"
             }
         }
+    }
+}
+
+/// The app's answer to a forwarded server challenge.
+extension RecordingURLProtocol: URLAuthenticationChallengeSender {
+    public func use(_ credential: URLCredential, for challenge: URLAuthenticationChallenge) {
+        answerChallenge(.useCredential, credential)
+    }
+
+    public func continueWithoutCredential(for challenge: URLAuthenticationChallenge) {
+        answerChallenge(.useCredential, nil)
+    }
+
+    public func cancel(_ challenge: URLAuthenticationChallenge) {
+        answerChallenge(.cancelAuthenticationChallenge, nil)
+    }
+
+    public func performDefaultHandling(for challenge: URLAuthenticationChallenge) {
+        answerChallenge(.performDefaultHandling, nil)
+    }
+
+    public func rejectProtectionSpaceAndContinue(with challenge: URLAuthenticationChallenge) {
+        answerChallenge(.rejectProtectionSpace, nil)
     }
 }
 
@@ -329,6 +383,11 @@ private final class Forwarder: NSObject, URLSessionDataDelegate, @unchecked Send
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void) {
         owner(of: dataTask)?.didReceive(response)
         completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        guard let owner = owner(of: task) else { return completionHandler(.performDefaultHandling, nil) }
+        owner.didReceive(challenge, completion: completionHandler)
     }
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {

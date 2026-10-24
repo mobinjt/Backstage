@@ -5,6 +5,7 @@ public enum NetworkExport {
     /// A `curl` command that repeats the request. Sensitive headers are left out unless asked for.
     public static func curl(_ transaction: NetworkTransaction, sensitiveHeaders: Set<String> = [], includingSensitive: Bool = false) -> String? {
         guard transaction.kind == .http, let url = transaction.url else { return nil }
+        let sensitiveHeaders = lowercased(sensitiveHeaders)
         var parts = ["curl"]
         let method = transaction.method ?? "GET"
         if method != "GET" {
@@ -21,6 +22,11 @@ public enum NetworkExport {
         return parts.joined(separator: " \\\n  ")
     }
 
+    /// Header names compare without case.
+    static func lowercased(_ fields: Set<String>) -> Set<String> {
+        Set(fields.map { $0.lowercased() })
+    }
+
     private static func quoted(_ text: String) -> String {
         "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
@@ -28,6 +34,7 @@ public enum NetworkExport {
     /// An HTTP Archive (HAR 1.2) of the HTTP transactions, which opens in Proxyman, Charles and
     /// browsers' developer tools. Connections are left out: HAR has no place for them.
     public static func har(_ transactions: [NetworkTransaction], sensitiveHeaders: Set<String> = [], includingSensitive: Bool = false, creator: String = "Backstage") throws -> Data {
+        let sensitiveHeaders = lowercased(sensitiveHeaders)
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         func headers(_ fields: [String: String]) -> [[String: String]] {
@@ -114,6 +121,7 @@ public enum NetworkExport {
 extension NetworkTransaction {
     /// A copy with the values of these headers (compared without case) replaced.
     public func hidingHeaders(_ fields: Set<String>) -> NetworkTransaction {
+        let fields = NetworkExport.lowercased(fields)
         var copy = self
         copy.requestHeaders = copy.requestHeaders.reduce(into: [:]) { $0[$1.key] = fields.contains($1.key.lowercased()) ? "<hidden>" : $1.value }
         copy.responseHeaders = copy.responseHeaders.reduce(into: [:]) { $0[$1.key] = fields.contains($1.key.lowercased()) ? "<hidden>" : $1.value }

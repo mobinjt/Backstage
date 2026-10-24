@@ -13,8 +13,10 @@ let package = Package(
         .executable(name: "backstage-passphrase", targets: ["backstage-passphrase"])
     ],
     targets: [
-        .target(name: "BackstageCore"),
-        .target(name: "Backstage", dependencies: ["BackstageCore"]),
+        // Each says which required-reason APIs it uses (UserDefaults, file dates), so apps don't
+        // have to.
+        .target(name: "BackstageCore", resources: [.copy("PrivacyInfo.xcprivacy")]),
+        .target(name: "Backstage", dependencies: ["BackstageCore"], resources: [.copy("PrivacyInfo.xcprivacy")]),
         .executableTarget(name: "backstage-passphrase", dependencies: ["BackstageCore"]),
         .testTarget(name: "BackstageCoreTests", dependencies: ["BackstageCore"])
     ]

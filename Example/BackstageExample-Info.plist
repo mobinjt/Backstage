@@ -4,5 +4,18 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Where Am I? shows the location the app gets, to try Backstage's fake location.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.mobinjt.BackstageExample</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>backstage-example</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
