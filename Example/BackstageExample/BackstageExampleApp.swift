@@ -40,9 +40,33 @@ private func setUpBackstage() {
     registry.addAction("Add sample iOS reports", group: "Demo") { SampleIOSReports.add() }
     registry.addAction("Reset demo data", group: "Demo") { DemoData.reset() }
     registry.addAction("Sign out", group: "Account", isDestructive: true) { DemoData.signOut() }
+    registry.addPage("Check a User ID", group: "Account", systemImage: "person.text.rectangle") {
+        UserIDCheckView()
+    }
 
     DemoData.seedIfNeeded()
 
     // The app's own notification handling. Backstage notes the notifications on its own.
     UNUserNotificationCenter.current().delegate = NotificationHandler.shared
+}
+
+/// A screen of the app's own in the App tab: types a user ID and says whether it's the signed-in one.
+private struct UserIDCheckView: View {
+    @State private var text = ""
+
+    var body: some View {
+        Form {
+            TextField("User ID", text: $text)
+                .autocorrectionDisabled()
+            if !text.isEmpty {
+                if text == DemoData.userID {
+                    Label("The signed-in user", systemImage: "checkmark.circle.fill")
+                } else {
+                    Label("Not the signed-in user", systemImage: "xmark.circle.fill")
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Check a User ID")
+    }
 }

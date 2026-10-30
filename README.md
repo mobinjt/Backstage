@@ -107,6 +107,11 @@ Backstage needs iOS 18 or macOS 15 and has no dependencies.
    // Switches and buttons.
    registry.addSwitch("Use mock data", key: "mockData", footnote: "Answers without the server.")
    registry.addAction("Sign out", group: "Account", isDestructive: true) { await session.signOut() }
+
+   // A screen of the app's own, for a tool that needs more than a button.
+   registry.addPage("Search Products", group: "Catalog", systemImage: "magnifyingglass") {
+       ProductSearchDebugView(catalog: catalog)
+   }
    ```
 
    The app reads the choices itself. Read the server once at launch, before making its client;
@@ -185,6 +190,7 @@ reports a bug.
   - `addInfo(_:group:value:)`: lines of information, such as IDs.
   - `addSwitch(_:key:group:footnote:)`: switches, read with `Backstage.isOn(_:)`.
   - `addAction(_:group:isDestructive:perform:)`: buttons.
+  - `addPage(_:group:systemImage:content:)`: rows that open the app's own SwiftUI screens.
   - **Lock Backstage**, in TestFlight builds.
 - **Tools.**
   - **Report a Bug**: a screenshot of the app to draw on, with what happened, this launch's calls

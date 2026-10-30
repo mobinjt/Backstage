@@ -1,10 +1,12 @@
 import BackstageCore
 import SwiftUI
 
-/// The build, the device, and what the app added: servers, information, switches and actions.
+/// The build, the device, and what the app added: information, its own screens, servers,
+/// switches and actions.
 struct AppTabView: View {
     @State private var backstage = Backstage.shared
     @State private var registry = Backstage.shared.registry
+    @State private var pages = AppPages.shared
     @State private var runningAction: UUID?
     @State private var confirmsLock = false
 
@@ -28,6 +30,22 @@ struct AppTabView: View {
                 Section(group) {
                     ForEach(registry.info.filter { $0.group == group }) { item in
                         copyable(item.title, item.value() ?? "None")
+                    }
+                }
+            }
+
+            ForEach(groups(of: pages.pages.map(\.group)), id: \.self) { group in
+                Section(group) {
+                    ForEach(pages.pages.filter { $0.group == group }) { page in
+                        NavigationLink {
+                            page.content()
+                        } label: {
+                            if let systemImage = page.systemImage {
+                                Label(page.title, systemImage: systemImage)
+                            } else {
+                                Text(page.title)
+                            }
+                        }
                     }
                 }
             }
